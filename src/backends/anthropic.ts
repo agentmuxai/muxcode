@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { IBackend, Message, McpTool, CompletionResponse, ToolCall } from '../types.js';
+import type { MessageParam } from '@anthropic-ai/sdk/resources/messages.js';
 
 export class AnthropicBackend implements IBackend {
   private client: Anthropic;
@@ -16,16 +17,13 @@ export class AnthropicBackend implements IBackend {
     const start = Date.now();
 
     const systemMsg = messages.find(m => m.role === 'system');
-    const userMessages = messages.filter(m => m.role !== 'system');
+    const nonSystem = messages.filter(m => m.role !== 'system');
 
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 8192,
       system: systemMsg ? String(systemMsg.content) : undefined,
-      messages: userMessages.map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: typeof m.content === 'string' ? m.content : (m.content as any),
-      })),
+      messages: toAnthropicMessages(nonSystem),
       tools: tools.map(t => ({
         name: t.name,
         description: t.description,
@@ -54,4 +52,43 @@ export class AnthropicBackend implements IBackend {
       stopReason: response.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn',
     };
   }
+}
+
+function toAnthropicMessages(messages: Message[]): MessageParam[] {
+  const result: MessageParam[] = [];
+
+  for (const m of messages) {
+    if (m.role === 'assistant') {
+      // Content already contains Anthropic-format blocks (text + tool_use) from loop.ts
+      result.push({
+        role: 'assistant',
+        content: typeof m.content === 'string'
+          ? m.content
+          : (m.content as Anthropic.ContentBlock[]),
+      });
+    } else if (m.role === 'tool') {
+      // Anthropic expects tool results as a user message with tool_result content blocks.
+      // Merge consecutive tool results into a single user message.
+      const block: Anthropic.ToolResultBlockParam = {
+        type: 'tool_result',
+        tool_use_id: m.tool_use_id ?? m.tool_call_id ?? '',
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+      };
+
+      const last = result[result.length - 1];
+      if (last?.role === 'user' && Array.isArray(last.content)) {
+        (last.content as Anthropic.ToolResultBlockParam[]).push(block);
+      } else {
+        result.push({ role: 'user', content: [block] });
+      }
+    } else {
+      // user messages
+      result.push({
+        role: 'user',
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+      });
+    }
+  }
+
+  return result;
 }

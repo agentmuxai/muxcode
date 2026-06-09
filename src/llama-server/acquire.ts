@@ -55,7 +55,8 @@ export async function ensureLlamaServer(onProgress?: ProgressFn): Promise<string
 
   // Get download URL from GitHub releases API
   const url = await resolveAssetUrl(build, asset);
-  const tmpArchive = path.join(BIN_DIR, 'llama-server.tar.gz.tmp');
+  // Keep .tar.gz extension so extractServerBinary can detect the format
+  const tmpArchive = path.join(BIN_DIR, 'llama-server.tar.gz.downloading');
 
   await downloadWithProgress(url, tmpArchive, (pct) => {
     onProgress?.(Math.round(pct * 0.9), `Downloading llama-server ${build} (${approxSize})`);

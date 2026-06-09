@@ -32,10 +32,11 @@ export async function runLoop(
       return finalText;
     }
 
-    // Add assistant message with tool calls
+    // Add assistant message with tool calls (content for Anthropic, tool_calls for OpenAI)
     messages.push({
       role: 'assistant',
       content: buildAssistantContent(response.text, response.toolCalls),
+      tool_calls: response.toolCalls,
     });
 
     // Execute all tool calls and collect results

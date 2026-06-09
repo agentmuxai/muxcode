@@ -54,15 +54,29 @@ export class OpenAiBackend implements IBackend {
 }
 
 function toOpenAiMessage(m: Message): ChatCompletionMessageParam {
-  const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+  const content = typeof m.content === 'string' ? m.content : null;
   switch (m.role) {
     case 'system':
-      return { role: 'system', content };
+      return { role: 'system', content: content ?? '' };
     case 'user':
-      return { role: 'user', content };
-    case 'assistant':
-      return { role: 'assistant', content };
+      return { role: 'user', content: content ?? '' };
+    case 'assistant': {
+      const msg: ChatCompletionMessageParam = { role: 'assistant', content };
+      if (m.tool_calls?.length) {
+        (msg as { role: 'assistant'; content: string | null; tool_calls?: unknown[] }).tool_calls =
+          m.tool_calls.map(tc => ({
+            id: tc.id,
+            type: 'function' as const,
+            function: { name: tc.name, arguments: JSON.stringify(tc.input) },
+          }));
+      }
+      return msg;
+    }
     case 'tool':
-      return { role: 'tool', content, tool_call_id: m.tool_call_id ?? '' };
+      return {
+        role: 'tool',
+        content: content ?? '',
+        tool_call_id: m.tool_call_id ?? '',
+      };
   }
 }

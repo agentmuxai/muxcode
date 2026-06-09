@@ -3,8 +3,9 @@ export type Backend = 'local' | 'anthropic' | 'openai' | 'openai-compat';
 export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | ContentPart[];
-  tool_call_id?: string;  // OpenAI format
-  tool_use_id?: string;   // Anthropic format
+  tool_call_id?: string;   // OpenAI: links tool result to assistant tool_calls entry
+  tool_use_id?: string;    // Anthropic: links tool_result block to tool_use block
+  tool_calls?: ToolCall[]; // OpenAI: assistant message carrying pending tool invocations
 }
 
 export interface ContentPart {
