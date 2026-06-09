@@ -115,7 +115,9 @@ export async function stopServer(): Promise<void> {
   current = null;
   proc.kill('SIGTERM');
   await sleep(800);
-  if (!proc.killed) proc.kill('SIGKILL');
+  // proc.killed is set true as soon as kill() delivers the signal, not when the
+  // process exits; use exitCode === null to test whether it's still running.
+  if (proc.exitCode === null) proc.kill('SIGKILL');
 }
 
 async function findFreePort(startFrom: number): Promise<number> {

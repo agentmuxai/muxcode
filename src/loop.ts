@@ -21,52 +21,57 @@ export async function runLoop(
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
-  for (let turn = 0; turn < MAX_TURNS; turn++) {
-    const response = await backend.complete(messages, tools);
+  try {
+    for (let turn = 0; turn < MAX_TURNS; turn++) {
+      const response = await backend.complete(messages, tools);
 
-    totalInputTokens += response.inputTokens;
-    totalOutputTokens += response.outputTokens;
+      totalInputTokens += response.inputTokens;
+      totalOutputTokens += response.outputTokens;
 
-    if (response.text) emitter.assistantText(response.text);
-    finalText = response.text ?? finalText;
+      if (response.text) emitter.assistantText(response.text);
+      finalText = response.text ?? finalText;
 
-    if (response.toolCalls.length === 0) {
-      emitter.done(finalText, totalInputTokens, totalOutputTokens);
-      return finalText;
-    }
+      if (response.toolCalls.length === 0) {
+        emitter.done(finalText, totalInputTokens, totalOutputTokens);
+        return finalText;
+      }
 
-    // Add assistant message with tool calls (content for Anthropic, tool_calls for OpenAI)
-    messages.push({
-      role: 'assistant',
-      content: buildAssistantContent(response.text, response.toolCalls),
-      tool_calls: response.toolCalls,
-    });
-
-    // Execute tool calls sequentially — MCP Client is not concurrency-safe
-    const toolResults: { call: ToolCall; output: string; isError: boolean }[] = [];
-    for (const call of response.toolCalls) {
-      emitter.toolUse(call);
-      const output = await executeTool(call, tools);
-      const isError = isErrorOutput(output);
-      emitter.toolResult(call.id, output, isError);
-      toolResults.push({ call, output, isError });
-    }
-
-    // Add tool results to message history
-    for (const { call, output } of toolResults) {
+      // Add assistant message with tool calls (content for Anthropic, tool_calls for OpenAI)
       messages.push({
-        role: 'tool',
-        content: output,
-        tool_call_id: call.id,
-        tool_use_id: call.id,
+        role: 'assistant',
+        content: buildAssistantContent(response.text, response.toolCalls),
+        tool_calls: response.toolCalls,
       });
-    }
-  }
 
-  const maxTurnsNote = `[Stopped after ${MAX_TURNS} turns without completing the task]`;
-  const resultText = finalText ? `${finalText}\n\n${maxTurnsNote}` : maxTurnsNote;
-  emitter.done(resultText, totalInputTokens, totalOutputTokens);
-  return resultText;
+      // Execute tool calls sequentially — MCP Client is not concurrency-safe
+      const toolResults: { call: ToolCall; output: string; isError: boolean }[] = [];
+      for (const call of response.toolCalls) {
+        emitter.toolUse(call);
+        const output = await executeTool(call, tools);
+        const isError = isErrorOutput(output);
+        emitter.toolResult(call.id, output, isError);
+        toolResults.push({ call, output, isError });
+      }
+
+      // Add tool results to message history
+      for (const { call, output } of toolResults) {
+        messages.push({
+          role: 'tool',
+          content: output,
+          tool_call_id: call.id,
+          tool_use_id: call.id,
+        });
+      }
+    }
+
+    const maxTurnsNote = `[Stopped after ${MAX_TURNS} turns without completing the task]`;
+    const resultText = finalText ? `${finalText}\n\n${maxTurnsNote}` : maxTurnsNote;
+    emitter.done(resultText, totalInputTokens, totalOutputTokens);
+    return resultText;
+  } catch (err) {
+    emitter.error((err as Error).message, totalInputTokens, totalOutputTokens);
+    throw err;
+  }
 }
 
 function buildAssistantContent(text: string, toolCalls: ToolCall[]): ContentPart[] {

@@ -38,18 +38,30 @@ export function buildCli(): Command {
       const emitter = new StreamJsonEmitter(opts.resume);
 
       try {
-        const tools = await initMcpServers(opts.mcpConfig);
-        emitter.init(opts.model ?? 'auto', getActiveServerIds(), tools.map(t => t.name));
-        const backend = createBackend({
-          backend: opts.backend,
-          model: opts.model,
-          baseUrl: opts.baseUrl,
-          onProgress: (pct, label) => emitter.loading(`${label} (${pct}%)`),
-        });
-        await runLoop(prompt, backend, tools, emitter, opts.system);
-      } catch (err) {
-        emitter.error((err as Error).message);
-        process.exitCode = 1;
+        let tools;
+        let backend;
+        try {
+          tools = await initMcpServers(opts.mcpConfig);
+          emitter.init(opts.model ?? 'auto', getActiveServerIds(), tools.map(t => t.name));
+          backend = createBackend({
+            backend: opts.backend,
+            model: opts.model,
+            baseUrl: opts.baseUrl,
+            onProgress: (pct, label) => emitter.loading(`${label} (${pct}%)`),
+          });
+        } catch (err) {
+          // Setup error (before loop started) — 0 tokens is correct here
+          emitter.error((err as Error).message);
+          process.exitCode = 1;
+          return;
+        }
+
+        try {
+          await runLoop(prompt, backend, tools, emitter, opts.system);
+        } catch {
+          // runLoop already emitted the error event with accumulated token counts
+          process.exitCode = 1;
+        }
       } finally {
         await closeMcpServers();
         await stopServer();
