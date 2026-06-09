@@ -93,11 +93,22 @@ function resolveModelPath(nameOrPath: string): string {
 }
 
 function toOpenAiMessage(m: Message): object {
-  const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+  const content = typeof m.content === 'string' ? m.content : null;
   if (m.role === 'tool') {
-    return { role: 'tool', content, tool_call_id: m.tool_call_id ?? '' };
+    return { role: 'tool', content: content ?? '', tool_call_id: m.tool_call_id ?? '' };
   }
-  return { role: m.role, content };
+  if (m.role === 'assistant' && m.tool_calls?.length) {
+    return {
+      role: 'assistant',
+      content,
+      tool_calls: m.tool_calls.map(tc => ({
+        id: tc.id,
+        type: 'function',
+        function: { name: tc.name, arguments: JSON.stringify(tc.input) },
+      })),
+    };
+  }
+  return { role: m.role, content: content ?? '' };
 }
 
 function toOpenAiTool(tool: McpTool): object {

@@ -10,7 +10,6 @@ import { removeModel } from './models/download.js';
 import { stopServer } from './llama-server/manager.js';
 import { muxHome } from './llama-server/acquire.js';
 import path from 'path';
-import { unlinkSync } from 'fs';
 
 export function buildCli(): Command {
   program

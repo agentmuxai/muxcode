@@ -43,8 +43,15 @@ export async function downloadModel(
     headers['Range'] = `bytes=${resumeFrom}-`;
   }
 
-  const res = await fetch(url, { headers });
-  if (!res.ok && res.status !== 206) {
+  let res = await fetch(url, { headers });
+
+  // If we requested a range but got 200 (server ignored Range), restart from 0
+  if (resumeFrom > 0 && res.status === 200) {
+    resumeFrom = 0;
+    res = await fetch(url);
+  }
+
+  if (!res.ok) {
     throw new Error(`Download failed: HTTP ${res.status} for ${url}`);
   }
 

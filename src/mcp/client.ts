@@ -27,7 +27,8 @@ export async function initMcpServers(configPath?: string): Promise<McpTool[]> {
   const config = loadMcpConfig(configPath);
   if (!config || Object.keys(config.mcpServers).length === 0) return [];
 
-  activeServers = [];
+  // Close existing connections before reinitialising
+  await closeMcpServers();
   const allTools: McpTool[] = [];
 
   for (const [id, serverConfig] of Object.entries(config.mcpServers)) {

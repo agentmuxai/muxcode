@@ -140,16 +140,14 @@ async function extractServerBinary(archivePath: string, destDir: string): Promis
   // Extract only the llama-server (or llama-server.exe) binary
   const exeName = process.platform === 'win32' ? 'llama-server.exe' : 'llama-server';
 
-  if (archivePath.endsWith('.tar.gz')) {
-    // Use tar — available on macOS, Linux, and Windows 10+
+  if (process.platform !== 'win32') {
+    // tar is always available on macOS and Linux
     execFileSync('tar', ['-xzf', archivePath, '-C', destDir, '--wildcards', '--no-anchored', exeName, '--strip-components=1'], { stdio: 'pipe' });
   } else {
-    // .zip (Windows fallback)
+    // Windows: use PowerShell Expand-Archive for .zip
     spawnSync('powershell', ['-Command', 'Expand-Archive', '-Path', archivePath, '-DestinationPath', destDir, '-Force'], { stdio: 'pipe' });
-    // Move the binary to the root of BIN_DIR
     const extracted = path.join(destDir, exeName);
     if (!existsSync(extracted)) {
-      // May be nested in a subdirectory — find it
       execFileSync('find', [destDir, '-name', exeName, '-exec', 'mv', '{}', destDir, ';'], { stdio: 'pipe' });
     }
   }
