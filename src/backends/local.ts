@@ -92,8 +92,8 @@ function resolveModelPath(nameOrPath: string): string {
   if (existsSync(guessed)) return guessed;
 
   throw new Error(
-    `Model "${nameOrPath}" not found. Run: mux-code model list\n` +
-    `To download: mux-code model pull ${nameOrPath}`
+    `Model "${nameOrPath}" not found. Run: muxcode model list\n` +
+    `To download: muxcode model pull ${nameOrPath}`
   );
 }
 
