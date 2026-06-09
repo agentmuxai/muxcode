@@ -140,8 +140,10 @@ async function downloadWithProgress(
     downloaded += chunk.length;
     if (total > 0) onProgress(downloaded / total);
     if (!canContinue) {
-      await new Promise<void>(r => writer.once('drain', r));
-      if (streamErr) throw streamErr;
+      await new Promise<void>((resolve, reject) => {
+        if (streamErr) { reject(streamErr); return; }
+        writer.once('drain', () => (streamErr ? reject(streamErr) : resolve()));
+      });
     }
   }
   if (streamErr) throw streamErr;
@@ -156,18 +158,27 @@ async function extractServerBinary(archivePath: string, destDir: string): Promis
   const destBin = path.join(destDir, exeName);
 
   if (process.platform !== 'win32') {
-    // List archive to find the binary's exact path — avoids GNU-only
-    // flags (--wildcards, --no-anchored) that BSD tar (macOS) rejects.
-    const listing = execFileSync('tar', ['-tzf', archivePath], { encoding: 'utf8', stdio: 'pipe' });
-    const entry = listing.split('\n').find(l => l === exeName || l.endsWith(`/${exeName}`));
-    if (!entry) throw new Error(`${exeName} not found in archive`);
-    const depth = entry.trim().split('/').length - 1;
-    execFileSync('tar', [
-      '-xzf', archivePath,
-      '-C', destDir,
-      `--strip-components=${depth}`,
-      entry.trim(),
-    ], { stdio: 'pipe' });
+    if (archivePath.endsWith('.zip')) {
+      // macOS: llama.cpp releases are .zip; use unzip (ships with macOS)
+      // unzip -Z -1 lists paths one per line without size/date columns
+      const listing = execFileSync('unzip', ['-Z', '-1', archivePath], { encoding: 'utf8', stdio: 'pipe' });
+      const entry = listing.split('\n').map(l => l.trim()).find(l => l === exeName || l.endsWith(`/${exeName}`));
+      if (!entry) throw new Error(`${exeName} not found in archive`);
+      // -j: junk paths (extract flat into destDir); -o: overwrite without prompting
+      execFileSync('unzip', ['-j', '-o', archivePath, entry, '-d', destDir], { stdio: 'pipe' });
+    } else {
+      // Linux: .tar.gz — avoids GNU-only flags (--wildcards, --no-anchored) that BSD tar rejects
+      const listing = execFileSync('tar', ['-tzf', archivePath], { encoding: 'utf8', stdio: 'pipe' });
+      const entry = listing.split('\n').find(l => l === exeName || l.endsWith(`/${exeName}`));
+      if (!entry) throw new Error(`${exeName} not found in archive`);
+      const depth = entry.trim().split('/').length - 1;
+      execFileSync('tar', [
+        '-xzf', archivePath,
+        '-C', destDir,
+        `--strip-components=${depth}`,
+        entry.trim(),
+      ], { stdio: 'pipe' });
+    }
   } else {
     // Windows: .zip — use PowerShell to expand, then find+move the binary.
     // Paths are passed via env vars to avoid single-quote injection in -Command strings.

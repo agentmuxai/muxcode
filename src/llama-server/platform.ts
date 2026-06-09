@@ -39,7 +39,8 @@ function checkCuda(): boolean {
 }
 
 export function assetName(build: string, platform: Platform): string {
-  const ext = platform.os === 'win' ? 'zip' : 'tar.gz';
+  // llama.cpp releases use .zip for Windows and macOS, .tar.gz for Linux
+  const ext = platform.os === 'ubuntu' ? 'tar.gz' : 'zip';
   if (platform.gpu === 'cuda') {
     return `llama-${build}-bin-${platform.os}-cuda-${platform.arch}.${ext}`;
   }

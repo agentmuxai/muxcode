@@ -71,11 +71,14 @@ export class OpenAiBackend implements IBackend {
 }
 
 function toOpenAiMessage(m: Message): ChatCompletionMessageParam {
+  // For ContentPart[] (tool-use turns), extract text blocks; '' → null so that
+  // tool-only assistant turns don't send empty-string content alongside tool_calls
+  // (some compat endpoints reject that combination).
   const content = typeof m.content === 'string'
     ? m.content
     : Array.isArray(m.content)
       ? (m.content as Array<{ type: string; text?: string }>)
-          .filter(p => p.type === 'text').map(p => p.text ?? '').join('')
+          .filter(p => p.type === 'text').map(p => p.text ?? '').join('') || null
       : null;
   switch (m.role) {
     case 'system':

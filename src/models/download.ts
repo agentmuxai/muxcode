@@ -95,8 +95,10 @@ export async function downloadModel(
       pct: totalBytes > 0 ? Math.min(100, (bytesDownloaded / totalBytes) * 100) : 0,
     });
     if (!canContinue) {
-      await new Promise<void>(r => writer.once('drain', r));
-      if (streamErr) throw streamErr;
+      await new Promise<void>((resolve, reject) => {
+        if (streamErr) { reject(streamErr); return; }
+        writer.once('drain', () => (streamErr ? reject(streamErr) : resolve()));
+      });
     }
   }
   if (streamErr) throw streamErr;
