@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "qwen2.5-coder:7b",
+      "name": "Qwen2.5-Coder 7B",
+      "description": "Strong code model, fast on CPU, 4-bit quantized",
+      "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+      "file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+      "sizeGb": 4.7,
+      "tags": ["code", "fast", "cpu"]
+    },
+    {
+      "id": "qwen2.5-coder:14b",
+      "name": "Qwen2.5-Coder 14B",
+      "description": "Larger Qwen coder, better reasoning, needs 10GB RAM",
+      "repo": "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
+      "file": "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+      "sizeGb": 9.0,
+      "tags": ["code", "reasoning", "cpu"]
+    },
+    {
+      "id": "deepseek-coder-v2:16b",
+      "name": "DeepSeek-Coder-V2 16B",
+      "description": "DeepSeek MoE coder, excellent code quality, 10GB active params",
+      "repo": "bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
+      "file": "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+      "sizeGb": 10.4,
+      "tags": ["code", "moe", "quality"]
+    },
+    {
+      "id": "llama3.1:8b",
+      "name": "Llama 3.1 8B",
+      "description": "Meta Llama 3.1 general purpose, good instruction following",
+      "repo": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+      "file": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+      "sizeGb": 4.9,
+      "tags": ["general", "fast", "cpu"]
+    },
+    {
+      "id": "phi4:14b",
+      "name": "Phi-4 14B",
+      "description": "Microsoft Phi-4, strong reasoning and coding in 14B",
+      "repo": "bartowski/phi-4-GGUF",
+      "file": "phi-4-Q4_K_M.gguf",
+      "sizeGb": 8.5,
+      "tags": ["code", "reasoning", "microsoft"]
+    }
+  ]
+}

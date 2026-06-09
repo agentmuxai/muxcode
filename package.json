@@ -1,0 +1,43 @@
+{
+  "name": "@a5af/mux-code",
+  "version": "0.1.0",
+  "description": "First-party agentic loop CLI for AgentMux — local GGUF inference via llama-server, cloud APIs, full MCP tool execution",
+  "type": "module",
+  "bin": {
+    "mux-code": "./bin/mux-code.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "bin/",
+    "dist/",
+    "catalog.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node bin/mux-code.js",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.37.0",
+    "@modelcontextprotocol/sdk": "^1.15.0",
+    "commander": "^12.0.0",
+    "openai": "^4.68.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/a5af/mux-code.git"
+  },
+  "license": "MIT"
+}

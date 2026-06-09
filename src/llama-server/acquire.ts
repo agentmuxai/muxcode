@@ -1,0 +1,166 @@
+import {
+  existsSync, mkdirSync, chmodSync,
+  writeFileSync, readFileSync, renameSync, unlinkSync,
+  createWriteStream,
+} from 'fs';
+import path from 'path';
+import os from 'os';
+import { execSync } from 'child_process';
+import { detectPlatform, assetName, APPROX_SIZES, platformKey } from './platform.js';
+
+const GITHUB_RELEASES_API =
+  'https://api.github.com/repos/ggml-org/llama.cpp/releases/latest';
+
+// Pinned build — updated periodically after smoke testing.
+// Override with LLAMA_SERVER_BUILD env var.
+const DEFAULT_BUILD = 'b9558';
+
+export function muxHome(): string {
+  return process.env.MUX_HOME ?? path.join(os.homedir(), '.mux');
+}
+
+const BIN_DIR = path.join(muxHome(), 'bin');
+
+export function llamaServerBinPath(): string {
+  const exe = process.platform === 'win32' ? 'llama-server.exe' : 'llama-server';
+  return path.join(BIN_DIR, exe);
+}
+
+const VERSION_FILE = path.join(BIN_DIR, 'llama-server.version');
+const LASTCHECK_FILE = path.join(BIN_DIR, 'llama-server.lastcheck');
+
+export type ProgressFn = (pct: number, label: string) => void;
+
+export async function ensureLlamaServer(onProgress?: ProgressFn): Promise<string> {
+  const binPath = llamaServerBinPath();
+  const platform = detectPlatform();
+
+  // Use pinned build unless env override
+  const pinnedBuild = process.env.LLAMA_SERVER_BUILD ?? DEFAULT_BUILD;
+
+  // Already installed at the right version?
+  const installed = readVersionFile();
+  if (installed === pinnedBuild && existsSync(binPath)) {
+    return binPath;
+  }
+
+  // Determine build to fetch (pinned or latest)
+  const build = await resolveBuild(pinnedBuild);
+  const asset = assetName(build, platform);
+  const approxSize = APPROX_SIZES[platformKey(platform)] ?? '?';
+
+  onProgress?.(0, `Downloading llama-server ${build} (${approxSize})`);
+
+  mkdirSync(BIN_DIR, { recursive: true });
+
+  // Get download URL from GitHub releases API
+  const url = await resolveAssetUrl(build, asset);
+  const tmpArchive = path.join(BIN_DIR, 'llama-server.tar.gz.tmp');
+
+  await downloadWithProgress(url, tmpArchive, (pct) => {
+    onProgress?.(Math.round(pct * 0.9), `Downloading llama-server ${build} (${approxSize})`);
+  });
+
+  onProgress?.(90, 'Extracting llama-server binary...');
+  await extractServerBinary(tmpArchive, BIN_DIR);
+  unlinkSync(tmpArchive);
+
+  if (process.platform !== 'win32') {
+    chmodSync(binPath, 0o755);
+  }
+
+  // Atomic version write
+  const tmpVersion = VERSION_FILE + '.tmp';
+  writeFileSync(tmpVersion, build, 'utf8');
+  renameSync(tmpVersion, VERSION_FILE);
+
+  writeFileSync(LASTCHECK_FILE, new Date().toISOString(), 'utf8');
+
+  onProgress?.(100, `llama-server ${build} ready`);
+  return binPath;
+}
+
+async function resolveBuild(pinned: string): Promise<string> {
+  if (pinned !== 'latest') return pinned;
+
+  // Check GitHub API for latest tag
+  const res = await fetch(GITHUB_RELEASES_API, {
+    headers: { 'User-Agent': 'mux-code' },
+  });
+  if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
+  const data = await res.json() as { tag_name: string };
+  return data.tag_name;
+}
+
+async function resolveAssetUrl(build: string, asset: string): Promise<string> {
+  const res = await fetch(
+    `https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/${build}`,
+    { headers: { 'User-Agent': 'mux-code' } }
+  );
+  if (!res.ok) throw new Error(`Could not find llama.cpp release ${build}`);
+  const data = await res.json() as { assets: { name: string; browser_download_url: string }[] };
+
+  const found = data.assets.find(a => a.name === asset);
+  if (!found) {
+    const available = data.assets.map(a => a.name).join(', ');
+    throw new Error(
+      `No asset "${asset}" in release ${build}.\nAvailable: ${available}`
+    );
+  }
+  return found.browser_download_url;
+}
+
+async function downloadWithProgress(
+  url: string,
+  dest: string,
+  onProgress: (pct: number) => void
+): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+
+  const total = Number(res.headers.get('content-length') ?? 0);
+  let downloaded = 0;
+
+  const writer = createWriteStream(dest);
+  const body = res.body!;
+
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    writer.write(chunk);
+    downloaded += chunk.length;
+    if (total > 0) onProgress(downloaded / total);
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    writer.end((err: Error | null) => err ? reject(err) : resolve());
+  });
+}
+
+async function extractServerBinary(archivePath: string, destDir: string): Promise<void> {
+  // Extract only the llama-server (or llama-server.exe) binary
+  const exeName = process.platform === 'win32' ? 'llama-server.exe' : 'llama-server';
+
+  if (archivePath.endsWith('.tar.gz')) {
+    // Use tar — available on macOS, Linux, and Windows 10+
+    execSync(
+      `tar -xzf "${archivePath}" -C "${destDir}" --wildcards --no-anchored "${exeName}" --strip-components=1`,
+      { stdio: 'pipe' }
+    );
+  } else {
+    // .zip (Windows fallback)
+    execSync(
+      `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`,
+      { stdio: 'pipe' }
+    );
+    // Move the binary to the root of BIN_DIR
+    const extracted = path.join(destDir, exeName);
+    if (!existsSync(extracted)) {
+      // May be nested in a subdirectory — find it
+      execSync(`find "${destDir}" -name "${exeName}" -exec mv {} "${destDir}" \\;`, { stdio: 'pipe' });
+    }
+  }
+}
+
+function readVersionFile(): string | null {
+  try { return readFileSync(VERSION_FILE, 'utf8').trim(); }
+  catch { return null; }
+}
