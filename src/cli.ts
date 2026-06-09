@@ -169,13 +169,15 @@ export function buildCli(): Command {
         return;
       }
 
+      // Always show the full catalog so first-time users can discover model IDs.
+      // Append an install hint at the bottom if nothing is installed yet.
       console.log('Available models:');
       for (const m of catalog) {
         const status = installedNames.has(m.id) ? '✓' : ' ';
         console.log(`  [${status}] ${m.id.padEnd(30)} ${m.sizeGb}GB  ${m.description}`);
       }
       if (installed.length === 0) {
-        console.log('\nNo models installed. Run: muxcode model pull <id>');
+        console.log('\nNo models installed yet. Run: muxcode model pull <id>');
       }
     });
 

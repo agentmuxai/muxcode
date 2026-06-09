@@ -62,12 +62,9 @@ export async function downloadModel(
     ? Number(contentLength) + resumeFrom
     : model.sizeGb * 1024 * 1024 * 1024;
 
-  const writer = createWriteStream(tmpPath, { flags: resumeFrom > 0 ? 'a' : 'w' });
-  let streamErr: Error | null = null;
-  writer.once('error', (err) => { streamErr = err as Error; });
   const hash = createHash('sha256');
-
   let bytesDownloaded = resumeFrom;
+
   if (resumeFrom > 0) {
     // Pre-feed existing bytes into hash so final digest covers full file
     const { createReadStream } = await import('fs');
@@ -79,7 +76,13 @@ export async function downloadModel(
     });
   }
 
+  // Guard before opening the WriteStream — a leaked fd locks tmpPath on Windows,
+  // preventing any retry from opening it again.
   if (!res.body) throw new Error('No response body');
+
+  const writer = createWriteStream(tmpPath, { flags: resumeFrom > 0 ? 'a' : 'w' });
+  let streamErr: Error | null = null;
+  writer.once('error', (err) => { streamErr = err as Error; });
 
   for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
     if (streamErr) throw streamErr;
