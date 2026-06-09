@@ -125,22 +125,25 @@ async function downloadWithProgress(
   let downloaded = 0;
 
   const writer = createWriteStream(dest);
-  const writeError: Promise<never> = new Promise((_, reject) => writer.once('error', reject));
+  let streamErr: Error | null = null;
+  writer.once('error', (err) => { streamErr = err as Error; });
   const body = res.body!;
 
-  async function pumpChunks(): Promise<void> {
-    for await (const chunk of body as AsyncIterable<Uint8Array>) {
-      const canContinue = writer.write(chunk);
-      downloaded += chunk.length;
-      if (total > 0) onProgress(downloaded / total);
-      if (!canContinue) await new Promise<void>(r => writer.once('drain', r));
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    if (streamErr) throw streamErr;
+    const canContinue = writer.write(chunk);
+    downloaded += chunk.length;
+    if (total > 0) onProgress(downloaded / total);
+    if (!canContinue) {
+      await new Promise<void>(r => writer.once('drain', r));
+      if (streamErr) throw streamErr;
     }
-    await new Promise<void>((resolve, reject) => {
-      writer.end((err: Error | null) => err ? reject(err) : resolve());
-    });
   }
+  if (streamErr) throw streamErr;
 
-  await Promise.race([pumpChunks(), writeError]);
+  await new Promise<void>((resolve, reject) => {
+    writer.end((err: Error | null) => err ? reject(err) : resolve());
+  });
 }
 
 async function extractServerBinary(archivePath: string, destDir: string): Promise<void> {

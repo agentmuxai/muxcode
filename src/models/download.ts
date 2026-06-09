@@ -63,7 +63,8 @@ export async function downloadModel(
     : model.sizeGb * 1024 * 1024 * 1024;
 
   const writer = createWriteStream(tmpPath, { flags: resumeFrom > 0 ? 'a' : 'w' });
-  const writeError = new Promise<never>((_, reject) => writer.once('error', reject));
+  let streamErr: Error | null = null;
+  writer.once('error', (err) => { streamErr = err as Error; });
   const hash = createHash('sha256');
 
   let bytesDownloaded = resumeFrom;
@@ -81,6 +82,7 @@ export async function downloadModel(
   if (!res.body) throw new Error('No response body');
 
   for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    if (streamErr) throw streamErr;
     const canContinue = writer.write(chunk);
     hash.update(chunk);
     bytesDownloaded += chunk.length;
@@ -89,8 +91,12 @@ export async function downloadModel(
       totalBytes,
       pct: totalBytes > 0 ? Math.min(100, (bytesDownloaded / totalBytes) * 100) : 0,
     });
-    if (!canContinue) await Promise.race([new Promise<void>(r => writer.once('drain', r)), writeError]);
+    if (!canContinue) {
+      await new Promise<void>(r => writer.once('drain', r));
+      if (streamErr) throw streamErr;
+    }
   }
+  if (streamErr) throw streamErr;
 
   await new Promise<void>((resolve, reject) => {
     writer.end((err: Error | null) => (err ? reject(err) : resolve()));
