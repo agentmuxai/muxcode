@@ -19,15 +19,16 @@ export function muxHome(): string {
   return process.env.MUX_HOME ?? path.join(os.homedir(), '.mux');
 }
 
-const BIN_DIR = path.join(muxHome(), 'bin');
+// Computed lazily at call time so MUX_HOME changes after module load are respected
+function binDir(): string { return path.join(muxHome(), 'bin'); }
 
 export function llamaServerBinPath(): string {
   const exe = process.platform === 'win32' ? 'llama-server.exe' : 'llama-server';
-  return path.join(BIN_DIR, exe);
+  return path.join(binDir(), exe);
 }
 
-const VERSION_FILE = path.join(BIN_DIR, 'llama-server.version');
-const LASTCHECK_FILE = path.join(BIN_DIR, 'llama-server.lastcheck');
+function versionFile(): string { return path.join(binDir(), 'llama-server.version'); }
+function lastcheckFile(): string { return path.join(binDir(), 'llama-server.lastcheck'); }
 
 export type ProgressFn = (pct: number, label: string) => void;
 
@@ -51,13 +52,13 @@ export async function ensureLlamaServer(onProgress?: ProgressFn): Promise<string
 
   onProgress?.(0, `Downloading llama-server ${build} (${approxSize})`);
 
-  mkdirSync(BIN_DIR, { recursive: true });
+  mkdirSync(binDir(), { recursive: true });
 
   // Get download URL from GitHub releases API
   const url = await resolveAssetUrl(build, asset);
   // Windows: .zip must be the final extension — PowerShell 5.1 Expand-Archive
   // checks the file extension and rejects anything that doesn't end in .zip.
-  const tmpArchive = path.join(BIN_DIR, process.platform === 'win32'
+  const tmpArchive = path.join(binDir(), process.platform === 'win32'
     ? 'llama-server-downloading.zip'
     : 'llama-server.tar.gz.downloading');
 
@@ -67,7 +68,7 @@ export async function ensureLlamaServer(onProgress?: ProgressFn): Promise<string
 
   onProgress?.(90, 'Extracting llama-server binary...');
   try {
-    await extractServerBinary(tmpArchive, BIN_DIR);
+    await extractServerBinary(tmpArchive, binDir());
   } finally {
     if (existsSync(tmpArchive)) unlinkSync(tmpArchive);
   }
@@ -77,11 +78,11 @@ export async function ensureLlamaServer(onProgress?: ProgressFn): Promise<string
   }
 
   // Atomic version write
-  const tmpVersion = VERSION_FILE + '.tmp';
+  const tmpVersion = versionFile() + '.tmp';
   writeFileSync(tmpVersion, build, 'utf8');
-  renameSync(tmpVersion, VERSION_FILE);
+  renameSync(tmpVersion, versionFile());
 
-  writeFileSync(LASTCHECK_FILE, new Date().toISOString(), 'utf8');
+  writeFileSync(lastcheckFile(), new Date().toISOString(), 'utf8');
 
   onProgress?.(100, `llama-server ${build} ready`);
   return binPath;
@@ -194,6 +195,6 @@ async function extractServerBinary(archivePath: string, destDir: string): Promis
 }
 
 function readVersionFile(): string | null {
-  try { return readFileSync(VERSION_FILE, 'utf8').trim(); }
+  try { return readFileSync(versionFile(), 'utf8').trim(); }
   catch { return null; }
 }
