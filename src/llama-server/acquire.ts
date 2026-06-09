@@ -55,7 +55,6 @@ export async function ensureLlamaServer(onProgress?: ProgressFn): Promise<string
 
   // Get download URL from GitHub releases API
   const url = await resolveAssetUrl(build, asset);
-  // Keep .tar.gz extension so extractServerBinary can detect the format
   const tmpArchive = path.join(BIN_DIR, 'llama-server.tar.gz.downloading');
 
   await downloadWithProgress(url, tmpArchive, (pct) => {

@@ -44,16 +44,15 @@ export async function runLoop(
       tool_calls: response.toolCalls,
     });
 
-    // Execute all tool calls and collect results
-    const toolResults = await Promise.all(
-      response.toolCalls.map(async (call: ToolCall) => {
-        emitter.toolUse(call);
-        const output = await executeTool(call, tools);
-        const isError = isErrorOutput(output);
-        emitter.toolResult(call.id, output, isError);
-        return { call, output, isError };
-      })
-    );
+    // Execute tool calls sequentially — MCP Client is not concurrency-safe
+    const toolResults: { call: ToolCall; output: string; isError: boolean }[] = [];
+    for (const call of response.toolCalls) {
+      emitter.toolUse(call);
+      const output = await executeTool(call, tools);
+      const isError = isErrorOutput(output);
+      emitter.toolResult(call.id, output, isError);
+      toolResults.push({ call, output, isError });
+    }
 
     // Add tool results to message history
     for (const { call, output } of toolResults) {
@@ -67,6 +66,7 @@ export async function runLoop(
   }
 
   emitter.error(`Reached max turns (${MAX_TURNS}) without completing task`);
+  emitter.done(finalText, totalInputTokens, totalOutputTokens);
   return finalText;
 }
 
