@@ -25,12 +25,8 @@ export async function getServerUrl(
   if (current?.modelPath === modelPath) {
     const alive = await checkHealth(current.baseUrl, 500);
     if (alive) return current.baseUrl;
-    // Server unhealthy — kill it and wait briefly before restarting to let port release
-    const dyingProc = current.proc;
-    dyingProc.kill('SIGTERM');
-    await sleep(500);
-    if (!dyingProc.killed) dyingProc.kill('SIGKILL');
-    current = null;
+    // Server unhealthy — stopServer() handles SIGTERM + SIGKILL + current = null
+    await stopServer();
   }
 
   // Stop previous server if different model
