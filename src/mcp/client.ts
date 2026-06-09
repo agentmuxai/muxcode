@@ -25,7 +25,7 @@ let activeServers: ActiveServer[] = [];
 
 export async function initMcpServers(configPath?: string): Promise<McpTool[]> {
   const config = loadMcpConfig(configPath);
-  if (!config || Object.keys(config.mcpServers).length === 0) {
+  if (!config || typeof config.mcpServers !== 'object' || !config.mcpServers || Object.keys(config.mcpServers).length === 0) {
     await closeMcpServers();
     return [];
   }
@@ -90,6 +90,7 @@ export async function executeTool(call: ToolCall, tools: McpTool[]): Promise<str
     });
 
     const raw = result.content;
+    if (raw === undefined || raw === null) return '';
     if (!Array.isArray(raw)) return JSON.stringify(raw);
     return (raw as Array<{ type: string; text?: string }>)
       .map(c => c.text ?? JSON.stringify(c))

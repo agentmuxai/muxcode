@@ -32,11 +32,12 @@ export function listInstalled(): InstalledModel[] {
       if (!f.endsWith('.gguf')) return false;
       try { return statSync(path.join(modelsDir, f)).isFile(); } catch { return false; }
     })
-    .map(f => {
+    .flatMap(f => {
       const fullPath = path.join(modelsDir, f);
-      const stat = statSync(fullPath);
-      const metaPath = fullPath + '.json';
+      let stat;
+      try { stat = statSync(fullPath); } catch { return []; }
 
+      const metaPath = fullPath + '.json';
       let sidecar: ModelSidecar | undefined;
       if (existsSync(metaPath)) {
         try {
@@ -48,11 +49,11 @@ export function listInstalled(): InstalledModel[] {
 
       const name = sidecar?.id ?? f.replace(/\.gguf$/, '');
 
-      return {
+      return [{
         name,
         path: fullPath,
         sizeBytes: stat.size,
         ...(sidecar?.downloadedAt ? { downloadedAt: sidecar.downloadedAt } : {}),
-      };
+      }];
     });
 }

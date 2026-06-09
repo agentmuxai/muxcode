@@ -63,6 +63,7 @@ export async function downloadModel(
     : model.sizeGb * 1024 * 1024 * 1024;
 
   const writer = createWriteStream(tmpPath, { flags: resumeFrom > 0 ? 'a' : 'w' });
+  const writeError = new Promise<never>((_, reject) => writer.once('error', reject));
   const hash = createHash('sha256');
 
   let bytesDownloaded = resumeFrom;
@@ -88,7 +89,7 @@ export async function downloadModel(
       totalBytes,
       pct: totalBytes > 0 ? Math.min(100, (bytesDownloaded / totalBytes) * 100) : 0,
     });
-    if (!canContinue) await new Promise<void>(r => writer.once('drain', r));
+    if (!canContinue) await Promise.race([new Promise<void>(r => writer.once('drain', r)), writeError]);
   }
 
   await new Promise<void>((resolve, reject) => {
