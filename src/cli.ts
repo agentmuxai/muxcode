@@ -8,6 +8,7 @@ import { downloadModel } from './models/download.js';
 import { listInstalled } from './models/list.js';
 import { removeModel } from './models/download.js';
 import { stopServer } from './llama-server/manager.js';
+import { muxHome } from './llama-server/acquire.js';
 import path from 'path';
 import { unlinkSync } from 'fs';
 
@@ -27,6 +28,7 @@ export function buildCli(): Command {
     .option('--base-url <url>', 'Base URL for openai-compat backend')
     .option('--mcp-config <path>', 'Path to .mcp.json config')
     .option('--system <text>', 'Override system prompt')
+    .option('--resume <session-id>', 'Resume a previous session by ID')
     .action(async (opts) => {
       const prompt = opts.prompt ?? await readStdin();
       if (!prompt.trim()) {
@@ -34,7 +36,7 @@ export function buildCli(): Command {
         process.exit(1);
       }
 
-      const emitter = new StreamJsonEmitter();
+      const emitter = new StreamJsonEmitter(opts.resume);
 
       try {
         const tools = await initMcpServers(opts.mcpConfig);
@@ -65,9 +67,11 @@ export function buildCli(): Command {
     .command('list')
     .description('List available and installed models')
     .option('--installed', 'Show only installed models')
+    .option('--available', 'Show only catalog models that are not installed')
     .action(async (opts) => {
       const installed = listInstalled();
-      if (opts.installed || installed.length === 0) {
+
+      if (opts.installed) {
         if (installed.length === 0) {
           console.log('No models installed. Run: mux-code model pull <id>');
           return;
@@ -83,6 +87,23 @@ export function buildCli(): Command {
       const catalog = await getCatalog();
       const installedNames = new Set(installed.map(m => m.name));
 
+      if (opts.available) {
+        const notInstalled = catalog.filter(m => !installedNames.has(m.id));
+        if (notInstalled.length === 0) {
+          console.log('All catalog models are already installed.');
+          return;
+        }
+        console.log('Available (not installed) models:');
+        for (const m of notInstalled) {
+          console.log(`  ${m.id.padEnd(30)} ${m.sizeGb}GB  ${m.description}`);
+        }
+        return;
+      }
+
+      if (installed.length === 0) {
+        console.log('No models installed. Run: mux-code model pull <id>');
+      }
+
       console.log('Available models:');
       for (const m of catalog) {
         const status = installedNames.has(m.id) ? '✓' : ' ';
@@ -93,7 +114,8 @@ export function buildCli(): Command {
   modelCmd
     .command('pull <id>')
     .description('Download a model from the catalog')
-    .action(async (id) => {
+    .option('--json-progress', 'Emit NDJSON progress events instead of a human-readable bar')
+    .action(async (id, opts) => {
       const catalog = await getCatalog();
       const model = findModel(id, catalog);
       if (!model) {
@@ -101,19 +123,36 @@ export function buildCli(): Command {
         process.exit(1);
       }
 
-      console.log(`Downloading ${model.name} (${model.sizeGb} GB)...`);
+      if (!opts.jsonProgress) {
+        console.log(`Downloading ${model.name} (${model.sizeGb} GB)...`);
+      }
+
       let lastPct = -1;
 
-      const dest = await downloadModel(model, ({ pct }) => {
-        const rounded = Math.floor(pct / 5) * 5;
-        if (rounded !== lastPct) {
-          process.stdout.write(`\r  ${rounded}%`);
-          lastPct = rounded;
+      const dest = await downloadModel(model, ({ bytesDownloaded, totalBytes, pct }) => {
+        if (opts.jsonProgress) {
+          process.stdout.write(JSON.stringify({
+            type: 'progress',
+            id: model.id,
+            bytesDownloaded,
+            totalBytes,
+            pct: Math.floor(pct),
+          }) + '\n');
+        } else {
+          const rounded = Math.floor(pct / 5) * 5;
+          if (rounded !== lastPct) {
+            process.stdout.write(`\r  ${rounded}%`);
+            lastPct = rounded;
+          }
         }
       });
 
-      process.stdout.write('\n');
-      console.log(`Saved to ${dest}`);
+      if (!opts.jsonProgress) {
+        process.stdout.write('\n');
+        console.log(`Saved to ${dest}`);
+      } else {
+        process.stdout.write(JSON.stringify({ type: 'done', id: model.id, path: dest }) + '\n');
+      }
     });
 
   modelCmd
@@ -128,6 +167,17 @@ export function buildCli(): Command {
       }
       removeModel(model.path);
       console.log(`Removed ${model.path}`);
+    });
+
+  modelCmd
+    .command('du')
+    .description('Show total disk usage of installed models')
+    .action(() => {
+      const installed = listInstalled();
+      const totalBytes = installed.reduce((sum, m) => sum + m.sizeBytes, 0);
+      const totalGb = (totalBytes / 1e9).toFixed(1);
+      const modelsDir = path.join(muxHome(), 'models');
+      console.log(`Models: ${totalGb} GB  (${installed.length} model${installed.length !== 1 ? 's' : ''} in ${modelsDir})`);
     });
 
   return program;

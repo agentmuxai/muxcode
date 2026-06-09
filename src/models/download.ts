@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'fs';
+import { createWriteStream, existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { createHash } from 'crypto';
 import path from 'path';
 import { muxHome } from '../llama-server/acquire.js';
@@ -84,6 +84,16 @@ export async function downloadModel(
   }
 
   renameSync(tmpPath, destPath);
+
+  const metaPath = destPath + '.json';
+  writeFileSync(metaPath, JSON.stringify({
+    id: model.id,
+    name: model.name,
+    sizeGb: model.sizeGb,
+    sha256: model.sha256 ?? null,
+    downloadedAt: new Date().toISOString(),
+  }, null, 2));
+
   return destPath;
 }
 
