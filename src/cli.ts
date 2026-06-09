@@ -57,6 +57,22 @@ export function buildCli(): Command {
       }
     });
 
+  // ── auth subcommand ─────────────────────────────────────────────────────────
+  const authCmd = program
+    .command('auth')
+    .description('Authentication and backend configuration');
+
+  authCmd
+    .command('status')
+    .description('Exit 0 if any backend is ready (API key or local model), else exit 1')
+    .action(() => {
+      if (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENAI_BASE_URL) {
+        process.exit(0);
+      }
+      const installed = listInstalled();
+      process.exit(installed.length > 0 ? 0 : 1);
+    });
+
   // ── model subcommands ───────────────────────────────────────────────────────
   const modelCmd = program
     .command('model')
