@@ -86,7 +86,7 @@ export function buildCli(): Command {
         return;
       }
 
-      const defaultModelId = 'qwen2.5-coder-1.5b';
+      const defaultModelId = 'qwen2.5-coder:7b';
       console.log('No backend configured. To use a cloud backend, set ANTHROPIC_API_KEY or OPENAI_API_KEY.');
       console.log(`Downloading default local model (${defaultModelId})...`);
       try {
