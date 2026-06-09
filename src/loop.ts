@@ -27,10 +27,8 @@ export async function runLoop(
     totalInputTokens += response.inputTokens;
     totalOutputTokens += response.outputTokens;
 
-    if (response.text) {
-      emitter.assistantText(response.text);
-      finalText = response.text;
-    }
+    if (response.text) emitter.assistantText(response.text);
+    finalText = response.text ?? finalText;
 
     if (response.toolCalls.length === 0) {
       emitter.done(finalText, totalInputTokens, totalOutputTokens);

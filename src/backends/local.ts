@@ -98,7 +98,12 @@ function resolveModelPath(nameOrPath: string): string {
 }
 
 function toOpenAiMessage(m: Message): object {
-  const content = typeof m.content === 'string' ? m.content : null;
+  const content = typeof m.content === 'string'
+    ? m.content
+    : Array.isArray(m.content)
+      ? (m.content as Array<{ type: string; text?: string }>)
+          .filter(p => p.type === 'text').map(p => p.text ?? '').join('')
+      : null;
   if (m.role === 'tool') {
     return { role: 'tool', content: content ?? '', tool_call_id: m.tool_call_id ?? '' };
   }

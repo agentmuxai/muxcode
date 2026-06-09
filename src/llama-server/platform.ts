@@ -43,6 +43,9 @@ export function assetName(build: string, platform: Platform): string {
   if (platform.gpu === 'cuda') {
     return `llama-${build}-bin-${platform.os}-cuda-${platform.arch}.${ext}`;
   }
+  if (platform.os === 'win') {
+    return `llama-${build}-bin-win-cpu-${platform.arch}.${ext}`;
+  }
   return `llama-${build}-bin-${platform.os}-${platform.arch}.${ext}`;
 }
 
