@@ -13,7 +13,7 @@ import path from 'path';
 
 export function buildCli(): Command {
   program
-    .name('mux-code')
+    .name('muxcode')
     .description('Agentic coding assistant with local and cloud backends')
     .version('0.1.0');
 
@@ -72,7 +72,7 @@ export function buildCli(): Command {
 
       if (opts.installed) {
         if (installed.length === 0) {
-          console.log('No models installed. Run: mux-code model pull <id>');
+          console.log('No models installed. Run: muxcode model pull <id>');
           return;
         }
         console.log('Installed models:');
@@ -100,7 +100,7 @@ export function buildCli(): Command {
       }
 
       if (installed.length === 0) {
-        console.log('No models installed. Run: mux-code model pull <id>');
+        console.log('No models installed. Run: muxcode model pull <id>');
       }
 
       console.log('Available models:');
@@ -118,7 +118,7 @@ export function buildCli(): Command {
       const catalog = await getCatalog();
       const model = findModel(id, catalog);
       if (!model) {
-        console.error(`Model "${id}" not found. Run: mux-code model list`);
+        console.error(`Model "${id}" not found. Run: muxcode model list`);
         process.exit(1);
       }
 
