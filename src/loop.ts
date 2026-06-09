@@ -18,9 +18,14 @@ export async function runLoop(
   ];
 
   let finalText = '';
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const response = await backend.complete(messages, tools);
+
+    totalInputTokens += response.inputTokens;
+    totalOutputTokens += response.outputTokens;
 
     if (response.text) {
       emitter.assistantText(response.text);
@@ -28,7 +33,7 @@ export async function runLoop(
     }
 
     if (response.toolCalls.length === 0) {
-      emitter.done(finalText, response.inputTokens, response.outputTokens);
+      emitter.done(finalText, totalInputTokens, totalOutputTokens);
       return finalText;
     }
 

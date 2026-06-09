@@ -7,9 +7,13 @@ export class OpenAiBackend implements IBackend {
   private model: string;
 
   constructor(model = 'gpt-4o', baseUrl?: string) {
-    const apiKey = process.env.OPENAI_API_KEY ?? 'sk-placeholder';
+    const apiKey = process.env.OPENAI_API_KEY;
+    // Only throw if no baseUrl (i.e., it's a real OpenAI call, not compat)
+    if (!apiKey && !baseUrl && !process.env.OPENAI_BASE_URL) {
+      throw new Error('OPENAI_API_KEY not set');
+    }
     this.client = new OpenAI({
-      apiKey,
+      apiKey: apiKey ?? 'sk-no-key',
       baseURL: baseUrl ?? process.env.OPENAI_BASE_URL,
     });
     this.model = model;
@@ -36,11 +40,19 @@ export class OpenAiBackend implements IBackend {
     const choice = response.choices[0];
     const msg = choice.message;
 
-    const toolCalls: ToolCall[] = (msg.tool_calls ?? []).map(tc => ({
-      id: tc.id,
-      name: tc.function.name,
-      input: JSON.parse(tc.function.arguments),
-    }));
+    const toolCalls: ToolCall[] = (msg.tool_calls ?? []).map(tc => {
+      let parsedInput: Record<string, unknown>;
+      try {
+        parsedInput = JSON.parse(tc.function.arguments);
+      } catch {
+        parsedInput = { _raw: tc.function.arguments };
+      }
+      return {
+        id: tc.id,
+        name: tc.function.name,
+        input: parsedInput,
+      };
+    });
 
     return {
       text: msg.content ?? '',

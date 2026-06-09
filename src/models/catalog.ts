@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { muxHome } from '../llama-server/acquire.js';
 
 export interface CatalogModel {
@@ -56,8 +57,9 @@ export async function getCatalog(): Promise<CatalogModel[]> {
 
 export function getBundledCatalog(): CatalogModel[] {
   // Resolve catalog.json relative to this module's package root
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    path.join(import.meta.dirname ?? '', '../../catalog.json'),
+    path.join(__dirname, '../../catalog.json'),
     path.join(process.cwd(), 'catalog.json'),
   ];
   for (const p of candidates) {

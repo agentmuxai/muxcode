@@ -57,6 +57,16 @@ export async function downloadModel(
   const hash = createHash('sha256');
 
   let bytesDownloaded = resumeFrom;
+  if (resumeFrom > 0) {
+    // Pre-feed existing bytes into hash so final digest covers full file
+    const { createReadStream } = await import('fs');
+    await new Promise<void>((resolve, reject) => {
+      createReadStream(tmpPath)
+        .on('data', (chunk: string | Buffer) => hash.update(chunk))
+        .on('end', resolve)
+        .on('error', reject);
+    });
+  }
 
   if (!res.body) throw new Error('No response body');
 

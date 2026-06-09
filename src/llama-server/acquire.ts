@@ -5,7 +5,7 @@ import {
 } from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync } from 'child_process';
+import { execSync, execFileSync, spawnSync } from 'child_process';
 import { detectPlatform, assetName, APPROX_SIZES, platformKey } from './platform.js';
 
 const GITHUB_RELEASES_API =
@@ -142,21 +142,15 @@ async function extractServerBinary(archivePath: string, destDir: string): Promis
 
   if (archivePath.endsWith('.tar.gz')) {
     // Use tar — available on macOS, Linux, and Windows 10+
-    execSync(
-      `tar -xzf "${archivePath}" -C "${destDir}" --wildcards --no-anchored "${exeName}" --strip-components=1`,
-      { stdio: 'pipe' }
-    );
+    execFileSync('tar', ['-xzf', archivePath, '-C', destDir, '--wildcards', '--no-anchored', exeName, '--strip-components=1'], { stdio: 'pipe' });
   } else {
     // .zip (Windows fallback)
-    execSync(
-      `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`,
-      { stdio: 'pipe' }
-    );
+    spawnSync('powershell', ['-Command', 'Expand-Archive', '-Path', archivePath, '-DestinationPath', destDir, '-Force'], { stdio: 'pipe' });
     // Move the binary to the root of BIN_DIR
     const extracted = path.join(destDir, exeName);
     if (!existsSync(extracted)) {
       // May be nested in a subdirectory — find it
-      execSync(`find "${destDir}" -name "${exeName}" -exec mv {} "${destDir}" \\;`, { stdio: 'pipe' });
+      execFileSync('find', [destDir, '-name', exeName, '-exec', 'mv', '{}', destDir, ';'], { stdio: 'pipe' });
     }
   }
 }

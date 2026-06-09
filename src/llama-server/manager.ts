@@ -77,7 +77,7 @@ async function waitForHealth(baseUrl: string, timeoutMs: number): Promise<void> 
     if (await checkHealth(baseUrl, 300)) return;
     await sleep(300);
   }
-  stopServer();
+  await stopServer();
   throw new Error(
     `llama-server did not start within ${timeoutMs / 1000}s. ` +
     `The model may require more RAM than available.`

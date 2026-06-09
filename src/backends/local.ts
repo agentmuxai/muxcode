@@ -1,4 +1,5 @@
 import path from 'path';
+import { existsSync } from 'fs';
 import { getServerUrl } from '../llama-server/manager.js';
 import { muxHome } from '../llama-server/acquire.js';
 import { listInstalled } from '../models/list.js';
@@ -46,11 +47,19 @@ export class LocalBackend implements IBackend {
     const choice = data.choices[0];
     const msg = choice.message;
 
-    const toolCalls: ToolCall[] = (msg.tool_calls ?? []).map(tc => ({
-      id: tc.id,
-      name: tc.function.name,
-      input: JSON.parse(tc.function.arguments),
-    }));
+    const toolCalls: ToolCall[] = (msg.tool_calls ?? []).map(tc => {
+      let parsedInput: Record<string, unknown>;
+      try {
+        parsedInput = JSON.parse(tc.function.arguments);
+      } catch {
+        parsedInput = { _raw: tc.function.arguments };
+      }
+      return {
+        id: tc.id,
+        name: tc.function.name,
+        input: parsedInput,
+      };
+    });
 
     return {
       text: msg.content ?? '',
@@ -75,7 +84,7 @@ function resolveModelPath(nameOrPath: string): string {
   // Try treating as filename in models dir
   const modelsDir = path.join(muxHome(), 'models');
   const guessed = path.join(modelsDir, nameOrPath.replace(':', '-') + '.gguf');
-  if (guessed) return guessed;
+  if (existsSync(guessed)) return guessed;
 
   throw new Error(
     `Model "${nameOrPath}" not found. Run: mux-code model list\n` +
@@ -84,10 +93,11 @@ function resolveModelPath(nameOrPath: string): string {
 }
 
 function toOpenAiMessage(m: Message): object {
-  if (typeof m.content === 'string') {
-    return { role: m.role, content: m.content };
+  const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+  if (m.role === 'tool') {
+    return { role: 'tool', content, tool_call_id: m.tool_call_id ?? '' };
   }
-  return { role: m.role, content: m.content };
+  return { role: m.role, content };
 }
 
 function toOpenAiTool(tool: McpTool): object {

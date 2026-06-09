@@ -43,7 +43,7 @@ export function listInstalled(): InstalledModel[] {
         }
       }
 
-      const name = sidecar?.id ?? f.replace(/\.gguf$/, '').replace(/-/g, ':');
+      const name = sidecar?.id ?? f.replace(/\.gguf$/, '');
 
       return {
         name,
