@@ -72,6 +72,46 @@ export function buildCli(): Command {
       process.exit(installed.length > 0 ? 0 : 1);
     });
 
+  authCmd
+    .command('login')
+    .description('Set up authentication: download a local model or configure an API key')
+    .action(async () => {
+      if (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENAI_BASE_URL) {
+        console.log('Cloud backend ready (API key found in environment).');
+        return;
+      }
+      const installed = listInstalled();
+      if (installed.length > 0) {
+        console.log(`Local model ready: ${installed[0].name}`);
+        return;
+      }
+
+      const defaultModelId = 'qwen2.5-coder-1.5b';
+      console.log('No backend configured. To use a cloud backend, set ANTHROPIC_API_KEY or OPENAI_API_KEY.');
+      console.log(`Downloading default local model (${defaultModelId})...`);
+      try {
+        const catalog = await getCatalog();
+        const model = findModel(defaultModelId, catalog);
+        if (!model) {
+          console.error(`Default model "${defaultModelId}" not found. Run: muxcode model list`);
+          process.exit(1);
+        }
+        let lastPct = -1;
+        await downloadModel(model, ({ pct }) => {
+          const rounded = Math.floor(pct / 5) * 5;
+          if (rounded !== lastPct) {
+            process.stdout.write(`\r  Downloading... ${rounded}%`);
+            lastPct = rounded;
+          }
+        });
+        process.stdout.write('\n');
+        console.log(`Model ready. Run: muxcode run -p "your prompt"`);
+      } catch (err) {
+        console.error(`Failed: ${(err as Error).message}`);
+        process.exit(1);
+      }
+    });
+
   // ── model subcommands ───────────────────────────────────────────────────────
   const modelCmd = program
     .command('model')
