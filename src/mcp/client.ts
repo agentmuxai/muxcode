@@ -82,8 +82,9 @@ export async function executeTool(call: ToolCall, tools: McpTool[]): Promise<str
       arguments: call.input,
     });
 
-    const content = result.content as Array<{ type: string; text?: string }>;
-    return content
+    const raw = result.content;
+    if (!Array.isArray(raw)) return JSON.stringify(raw);
+    return (raw as Array<{ type: string; text?: string }>)
       .map(c => c.text ?? JSON.stringify(c))
       .join('\n');
   } catch (err) {

@@ -116,6 +116,7 @@ export function buildCli(): Command {
 
       if (installed.length === 0) {
         console.log('No models installed. Run: muxcode model pull <id>');
+        return;
       }
 
       console.log('Available models:');

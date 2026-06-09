@@ -91,7 +91,7 @@ export async function downloadModel(
   }
 
   await new Promise<void>((resolve, reject) => {
-    writer.close(err => (err ? reject(err) : resolve()));
+    writer.end(err => (err ? reject(err) : resolve()));
   });
 
   if (model.sha256) {

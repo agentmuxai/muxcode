@@ -55,14 +55,16 @@ export async function getServerUrl(
 
   proc.on('error', (err) => {
     process.stderr.write(`[mux-code] llama-server error: ${err.message}\n`);
-    current = null;
+    if (current?.proc === proc) current = null;
   });
 
   proc.on('exit', (code) => {
     if (code !== 0 && code !== null) {
       process.stderr.write(`[mux-code] llama-server exited with code ${code}\n`);
     }
-    current = null;
+    // Only clear current if this is still the active process — avoids
+    // nulling the reference when a replacement server has already started.
+    if (current?.proc === proc) current = null;
   });
 
   const baseUrl = `http://127.0.0.1:${port}`;

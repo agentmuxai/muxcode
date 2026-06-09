@@ -65,7 +65,7 @@ export async function runLoop(
     }
   }
 
-  emitter.error(`Reached max turns (${MAX_TURNS}) without completing task`);
+  emitter.error(`Reached max turns (${MAX_TURNS}) without completing task`, totalInputTokens, totalOutputTokens);
   return finalText;
 }
 

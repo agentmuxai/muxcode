@@ -76,12 +76,14 @@ export class StreamJsonEmitter {
     });
   }
 
-  error(message: string) {
+  error(message: string, inputTokens = 0, outputTokens = 0) {
     this.emit({
       type: 'result',
       subtype: 'error',
       cost_usd: 0,
       duration_ms: Date.now() - this.startMs,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
       error: message,
       session_id: this.sessionId,
     });

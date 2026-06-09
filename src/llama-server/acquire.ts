@@ -5,7 +5,7 @@ import {
 } from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync, execFileSync, spawnSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { detectPlatform, assetName, APPROX_SIZES, platformKey } from './platform.js';
 
 const GITHUB_RELEASES_API =
