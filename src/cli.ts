@@ -169,15 +169,13 @@ export function buildCli(): Command {
         return;
       }
 
-      if (installed.length === 0) {
-        console.log('No models installed. Run: muxcode model pull <id>');
-        return;
-      }
-
       console.log('Available models:');
       for (const m of catalog) {
         const status = installedNames.has(m.id) ? '✓' : ' ';
         console.log(`  [${status}] ${m.id.padEnd(30)} ${m.sizeGb}GB  ${m.description}`);
+      }
+      if (installed.length === 0) {
+        console.log('\nNo models installed. Run: muxcode model pull <id>');
       }
     });
 

@@ -71,7 +71,12 @@ export class OpenAiBackend implements IBackend {
 }
 
 function toOpenAiMessage(m: Message): ChatCompletionMessageParam {
-  const content = typeof m.content === 'string' ? m.content : null;
+  const content = typeof m.content === 'string'
+    ? m.content
+    : Array.isArray(m.content)
+      ? (m.content as Array<{ type: string; text?: string }>)
+          .filter(p => p.type === 'text').map(p => p.text ?? '').join('')
+      : null;
   switch (m.role) {
     case 'system':
       return { role: 'system', content: content ?? '' };
