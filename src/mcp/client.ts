@@ -25,7 +25,10 @@ let activeServers: ActiveServer[] = [];
 
 export async function initMcpServers(configPath?: string): Promise<McpTool[]> {
   const config = loadMcpConfig(configPath);
-  if (!config || Object.keys(config.mcpServers).length === 0) return [];
+  if (!config || Object.keys(config.mcpServers).length === 0) {
+    await closeMcpServers();
+    return [];
+  }
 
   // Close existing connections before reinitialising
   await closeMcpServers();

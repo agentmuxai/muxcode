@@ -39,14 +39,13 @@ export function buildCli(): Command {
 
       try {
         const tools = await initMcpServers(opts.mcpConfig);
+        emitter.init(opts.model ?? 'auto', tools.map(t => t.name));
         const backend = createBackend({
           backend: opts.backend,
           model: opts.model,
           baseUrl: opts.baseUrl,
           onProgress: (pct, label) => emitter.loading(`${label} (${pct}%)`),
         });
-
-        emitter.init(opts.model ?? 'auto', []);
         await runLoop(prompt, backend, tools, emitter, opts.system);
       } catch (err) {
         emitter.error((err as Error).message);

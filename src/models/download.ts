@@ -45,8 +45,10 @@ export async function downloadModel(
 
   let res = await fetch(url, { headers });
 
-  // If we requested a range but got 200 (server ignored Range), restart from 0
+  // If we requested a range but got 200 (server ignored Range), abort the
+  // connection to avoid leaking the HTTP body, then restart from zero.
   if (resumeFrom > 0 && res.status === 200) {
+    if (res.body) await res.body.cancel();
     resumeFrom = 0;
     res = await fetch(url);
   }
@@ -116,6 +118,8 @@ export async function downloadModel(
 
 export function removeModel(modelPath: string): void {
   if (existsSync(modelPath)) unlinkSync(modelPath);
+  const metaPath = modelPath + '.json';
+  if (existsSync(metaPath)) unlinkSync(metaPath);
 }
 
 async function verifySha256(filePath: string, expected: string): Promise<boolean> {

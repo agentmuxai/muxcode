@@ -37,6 +37,9 @@ export class OpenAiBackend implements IBackend {
       temperature: 0.1,
     });
 
+    if (!response.choices.length) {
+      throw new Error('OpenAI returned empty choices array');
+    }
     const choice = response.choices[0];
     const msg = choice.message;
 
@@ -60,7 +63,9 @@ export class OpenAiBackend implements IBackend {
       inputTokens: response.usage?.prompt_tokens ?? 0,
       outputTokens: response.usage?.completion_tokens ?? 0,
       durationMs: Date.now() - start,
-      stopReason: choice.finish_reason === 'tool_calls' ? 'tool_use' : 'end_turn',
+      stopReason: choice.finish_reason === 'tool_calls' ? 'tool_use'
+               : choice.finish_reason === 'length'    ? 'max_tokens'
+               : 'end_turn',
     };
   }
 }

@@ -49,7 +49,9 @@ export class AnthropicBackend implements IBackend {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
       durationMs: Date.now() - start,
-      stopReason: response.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn',
+      stopReason: response.stop_reason === 'tool_use'   ? 'tool_use'
+               : response.stop_reason === 'max_tokens' ? 'max_tokens'
+               : 'end_turn',
     };
   }
 }
