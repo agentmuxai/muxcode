@@ -47,7 +47,12 @@ export async function initMcpServers(configPath?: string): Promise<McpTool[]> {
         { capabilities: {} }
       );
 
-      await client.connect(transport);
+      try {
+        await client.connect(transport);
+      } catch (connectErr) {
+        try { await transport.close(); } catch { /* ignore */ }
+        throw connectErr;
+      }
       let listedTools;
       try {
         ({ tools: listedTools } = await client.listTools());

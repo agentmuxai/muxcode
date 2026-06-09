@@ -62,8 +62,11 @@ export async function ensureLlamaServer(onProgress?: ProgressFn): Promise<string
   });
 
   onProgress?.(90, 'Extracting llama-server binary...');
-  await extractServerBinary(tmpArchive, BIN_DIR);
-  unlinkSync(tmpArchive);
+  try {
+    await extractServerBinary(tmpArchive, BIN_DIR);
+  } finally {
+    if (existsSync(tmpArchive)) unlinkSync(tmpArchive);
+  }
 
   if (process.platform !== 'win32') {
     chmodSync(binPath, 0o755);
@@ -122,12 +125,14 @@ async function downloadWithProgress(
   let downloaded = 0;
 
   const writer = createWriteStream(dest);
+  const writeError = new Promise<never>((_, reject) => writer.once('error', reject));
   const body = res.body!;
 
   for await (const chunk of body as AsyncIterable<Uint8Array>) {
-    writer.write(chunk);
+    const canContinue = writer.write(chunk);
     downloaded += chunk.length;
     if (total > 0) onProgress(downloaded / total);
+    if (!canContinue) await Promise.race([new Promise<void>(r => writer.once('drain', r)), writeError]);
   }
 
   await new Promise<void>((resolve, reject) => {

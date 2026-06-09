@@ -26,8 +26,10 @@ export async function getServerUrl(
     const alive = await checkHealth(current.baseUrl, 500);
     if (alive) return current.baseUrl;
     // Server unhealthy — kill it and wait briefly before restarting to let port release
-    current.proc.kill('SIGTERM');
+    const dyingProc = current.proc;
+    dyingProc.kill('SIGTERM');
     await sleep(500);
+    if (!dyingProc.killed) dyingProc.kill('SIGKILL');
     current = null;
   }
 
@@ -51,6 +53,12 @@ export async function getServerUrl(
   ], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
+  });
+
+  // Drain piped stdio to prevent 64 KB OS pipe buffer from filling and blocking the child.
+  proc.stdout?.resume();
+  proc.stderr?.on('data', (chunk: Buffer) => {
+    process.stderr.write(chunk);
   });
 
   proc.on('error', (err) => {
