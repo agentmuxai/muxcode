@@ -81,7 +81,8 @@ export async function getServerUrl(
 async function waitForHealth(proc: ChildProcess, baseUrl: string, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    // Bail early if the process has already exited
+    // Yield to the event loop so any pending 'exit' event is dispatched before we read exitCode.
+    await new Promise(r => setImmediate(r));
     if (proc.exitCode !== null) {
       current = null;
       throw new Error(`llama-server exited unexpectedly (code ${proc.exitCode}) during startup`);
@@ -119,6 +120,8 @@ export async function stopServer(): Promise<void> {
 
 async function findFreePort(startFrom: number): Promise<number> {
   for (let port = startFrom; port < startFrom + 100; port++) {
+    // Note: there is an inherent TOCTOU gap between isPortFree() and spawn(); the caller
+    // retries on health-check failure, which is sufficient for the rare race in practice.
     if (await isPortFree(port)) return port;
   }
   throw new Error(`No free port found in range ${startFrom}–${startFrom + 100}`);

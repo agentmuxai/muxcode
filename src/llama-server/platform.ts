@@ -19,7 +19,7 @@ export function detectPlatform(): Platform {
   }
 
   if (process.platform === 'win32') {
-    return { os: 'win', arch: 'x64', gpu: checkCuda() ? 'cuda' : 'cpu' };
+    return { os: 'win', arch, gpu: checkCuda() ? 'cuda' : 'cpu' };
   }
 
   // Linux
