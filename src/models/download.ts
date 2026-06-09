@@ -80,7 +80,7 @@ export async function downloadModel(
   if (!res.body) throw new Error('No response body');
 
   for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-    writer.write(chunk);
+    const canContinue = writer.write(chunk);
     hash.update(chunk);
     bytesDownloaded += chunk.length;
     onProgress?.({
@@ -88,10 +88,11 @@ export async function downloadModel(
       totalBytes,
       pct: totalBytes > 0 ? Math.min(100, (bytesDownloaded / totalBytes) * 100) : 0,
     });
+    if (!canContinue) await new Promise<void>(r => writer.once('drain', r));
   }
 
   await new Promise<void>((resolve, reject) => {
-    writer.end(err => (err ? reject(err) : resolve()));
+    writer.end((err: Error | null) => (err ? reject(err) : resolve()));
   });
 
   if (model.sha256) {

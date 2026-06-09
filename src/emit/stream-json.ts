@@ -10,12 +10,12 @@ export class StreamJsonEmitter {
     this.startMs = Date.now();
   }
 
-  init(model: string, mcpServers: string[]) {
+  init(model: string, mcpServers: string[], tools: string[] = []) {
     this.emit({
       type: 'system',
       subtype: 'init',
       session_id: this.sessionId,
-      tools: [],
+      tools,
       mcp_servers: mcpServers,
       model,
     });

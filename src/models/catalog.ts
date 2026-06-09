@@ -30,7 +30,8 @@ export async function getCatalog(): Promise<CatalogModel[]> {
     try {
       const cached = JSON.parse(readFileSync(cachePath, 'utf8')) as { fetchedAt: number; catalog: Catalog };
       if (Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-        return cached.catalog.models;
+        const models = cached.catalog?.models;
+        if (Array.isArray(models)) return models;
       }
     } catch {
       // fall through to fetch
@@ -42,6 +43,7 @@ export async function getCatalog(): Promise<CatalogModel[]> {
     const res = await fetch(CATALOG_URL);
     if (res.ok) {
       const catalog = await res.json() as Catalog;
+      if (!Array.isArray(catalog?.models)) throw new Error('catalog missing models array');
       const dir = path.join(muxHome());
       mkdirSync(dir, { recursive: true });
       writeFileSync(cachePath, JSON.stringify({ fetchedAt: Date.now(), catalog }));
@@ -66,7 +68,7 @@ export function getBundledCatalog(): CatalogModel[] {
     if (existsSync(p)) {
       try {
         const data = JSON.parse(readFileSync(p, 'utf8')) as Catalog;
-        return data.models;
+        if (Array.isArray(data?.models)) return data.models;
       } catch {
         // try next
       }

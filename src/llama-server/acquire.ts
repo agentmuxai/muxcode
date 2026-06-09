@@ -154,16 +154,23 @@ async function extractServerBinary(archivePath: string, destDir: string): Promis
     ], { stdio: 'pipe' });
   } else {
     // Windows: .zip — use PowerShell to expand, then find+move the binary.
-    spawnSync('powershell', [
+    // Paths are passed via env vars to avoid single-quote injection in -Command strings.
+    const extractResult = spawnSync('powershell', [
       '-Command',
-      `Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force`,
-    ], { stdio: 'pipe' });
+      'Expand-Archive -LiteralPath $env:MUXCODE_ARCHIVE -DestinationPath $env:MUXCODE_DESTDIR -Force',
+    ], { env: { ...process.env, MUXCODE_ARCHIVE: archivePath, MUXCODE_DESTDIR: destDir }, stdio: 'pipe' });
+    if (extractResult.status !== 0) {
+      throw new Error(
+        `Expand-Archive failed (exit ${extractResult.status}): ` +
+        (extractResult.stderr?.toString().trim() ?? 'unknown error'),
+      );
+    }
     if (!existsSync(destBin)) {
       // Binary may be nested; use PowerShell to locate and move it.
       const result = spawnSync('powershell', [
         '-Command',
-        `Get-ChildItem -Path '${destDir}' -Recurse -Filter '${exeName}' | Select-Object -First 1 -ExpandProperty FullName`,
-      ], { stdio: 'pipe', encoding: 'utf8' });
+        `Get-ChildItem -LiteralPath $env:MUXCODE_DESTDIR -Recurse -Filter '${exeName}' | Select-Object -First 1 -ExpandProperty FullName`,
+      ], { env: { ...process.env, MUXCODE_DESTDIR: destDir }, stdio: 'pipe', encoding: 'utf8' });
       const found = result.stdout.trim();
       if (!found) throw new Error(`${exeName} not found in extracted archive`);
       if (found !== destBin) renameSync(found, destBin);

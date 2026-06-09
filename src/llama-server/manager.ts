@@ -1,7 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { createServer } from 'net';
 import { existsSync, readFileSync } from 'fs';
-import path from 'path';
 import { ensureLlamaServer } from './acquire.js';
 import type { ProgressFn } from './acquire.js';
 
@@ -26,8 +25,9 @@ export async function getServerUrl(
   if (current?.modelPath === modelPath) {
     const alive = await checkHealth(current.baseUrl, 500);
     if (alive) return current.baseUrl;
-    // Server unhealthy — kill it before restarting
+    // Server unhealthy — kill it and wait briefly before restarting to let port release
     current.proc.kill('SIGTERM');
+    await sleep(500);
     current = null;
   }
 

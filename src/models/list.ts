@@ -28,7 +28,10 @@ export function listInstalled(): InstalledModel[] {
   }
 
   return files
-    .filter(f => f.endsWith('.gguf'))
+    .filter(f => {
+      if (!f.endsWith('.gguf')) return false;
+      try { return statSync(path.join(modelsDir, f)).isFile(); } catch { return false; }
+    })
     .map(f => {
       const fullPath = path.join(modelsDir, f);
       const stat = statSync(fullPath);

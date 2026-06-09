@@ -1,6 +1,6 @@
 import { program, Command } from 'commander';
 import { createBackend } from './backends/index.js';
-import { initMcpServers, closeMcpServers } from './mcp/client.js';
+import { initMcpServers, closeMcpServers, getActiveServerIds } from './mcp/client.js';
 import { StreamJsonEmitter } from './emit/stream-json.js';
 import { runLoop } from './loop.js';
 import { getCatalog, findModel } from './models/catalog.js';
@@ -39,7 +39,7 @@ export function buildCli(): Command {
 
       try {
         const tools = await initMcpServers(opts.mcpConfig);
-        emitter.init(opts.model ?? 'auto', tools.map(t => t.name));
+        emitter.init(opts.model ?? 'auto', getActiveServerIds(), tools.map(t => t.name));
         const backend = createBackend({
           backend: opts.backend,
           model: opts.model,

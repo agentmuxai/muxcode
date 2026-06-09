@@ -65,8 +65,10 @@ export async function runLoop(
     }
   }
 
-  emitter.error(`Reached max turns (${MAX_TURNS}) without completing task`, totalInputTokens, totalOutputTokens);
-  return finalText;
+  const maxTurnsNote = `[Stopped after ${MAX_TURNS} turns without completing the task]`;
+  const resultText = finalText ? `${finalText}\n\n${maxTurnsNote}` : maxTurnsNote;
+  emitter.done(resultText, totalInputTokens, totalOutputTokens);
+  return resultText;
 }
 
 function buildAssistantContent(text: string, toolCalls: ToolCall[]): ContentPart[] {

@@ -24,11 +24,13 @@ export class AnthropicBackend implements IBackend {
       max_tokens: 8192,
       system: systemMsg ? String(systemMsg.content) : undefined,
       messages: toAnthropicMessages(nonSystem),
-      tools: tools.map(t => ({
-        name: t.name,
-        description: t.description,
-        input_schema: t.inputSchema,
-      })),
+      ...(tools.length ? {
+        tools: tools.map(t => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.inputSchema,
+        })),
+      } : {}),
     });
 
     const toolCalls: ToolCall[] = response.content

@@ -48,9 +48,16 @@ export async function initMcpServers(configPath?: string): Promise<McpTool[]> {
       );
 
       await client.connect(transport);
-      const { tools } = await client.listTools();
+      let listedTools;
+      try {
+        ({ tools: listedTools } = await client.listTools());
+      } catch (listErr) {
+        // listTools failed after connect — close to avoid transport/process leak
+        try { await client.close(); } catch { /* ignore */ }
+        throw listErr;
+      }
 
-      const serverTools: McpTool[] = tools.map(t => ({
+      const serverTools: McpTool[] = listedTools.map(t => ({
         name: t.name,
         description: t.description ?? '',
         inputSchema: t.inputSchema as McpTool['inputSchema'],
@@ -90,6 +97,10 @@ export async function executeTool(call: ToolCall, tools: McpTool[]): Promise<str
   } catch (err) {
     return JSON.stringify({ error: (err as Error).message });
   }
+}
+
+export function getActiveServerIds(): string[] {
+  return activeServers.map(s => s.id);
 }
 
 export async function closeMcpServers(): Promise<void> {
