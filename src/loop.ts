@@ -29,7 +29,10 @@ export async function runLoop(
       totalOutputTokens += response.outputTokens;
 
       if (response.text) emitter.assistantText(response.text);
-      finalText = response.text ?? finalText;
+      // Use || not ?? — backends return '' (not null) on tool-only turns, and
+      // '' ?? x gives '' (coalescing only skips null/undefined), which would
+      // overwrite finalText with empty string each tool-only turn.
+      finalText = response.text || finalText;
 
       if (response.toolCalls.length === 0) {
         emitter.done(finalText, totalInputTokens, totalOutputTokens);

@@ -40,9 +40,11 @@ export function buildCli(): Command {
       try {
         let tools;
         let backend;
+        let initEmitted = false;
         try {
           tools = await initMcpServers(opts.mcpConfig);
           emitter.init(opts.model ?? 'auto', getActiveServerIds(), tools.map(t => t.name));
+          initEmitted = true;
           backend = createBackend({
             backend: opts.backend,
             model: opts.model,
@@ -50,7 +52,8 @@ export function buildCli(): Command {
             onProgress: (pct, label) => emitter.loading(`${label} (${pct}%)`),
           });
         } catch (err) {
-          // Setup error (before loop started) — 0 tokens is correct here
+          // Ensure init always precedes the error event
+          if (!initEmitted) emitter.init(opts.model ?? 'auto', [], []);
           emitter.error((err as Error).message);
           process.exitCode = 1;
           return;
