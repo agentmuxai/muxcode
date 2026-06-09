@@ -39,11 +39,11 @@ function checkCuda(): boolean {
 }
 
 export function assetName(build: string, platform: Platform): string {
+  const ext = platform.os === 'win' ? 'zip' : 'tar.gz';
   if (platform.gpu === 'cuda') {
-    // CUDA assets use a different naming pattern
-    return `llama-${build}-bin-${platform.os}-cuda-${platform.arch}.tar.gz`;
+    return `llama-${build}-bin-${platform.os}-cuda-${platform.arch}.${ext}`;
   }
-  return `llama-${build}-bin-${platform.os}-${platform.arch}.tar.gz`;
+  return `llama-${build}-bin-${platform.os}-${platform.arch}.${ext}`;
 }
 
 export const APPROX_SIZES: Record<string, string> = {

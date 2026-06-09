@@ -136,18 +136,37 @@ async function downloadWithProgress(
 }
 
 async function extractServerBinary(archivePath: string, destDir: string): Promise<void> {
-  // Extract only the llama-server (or llama-server.exe) binary
   const exeName = process.platform === 'win32' ? 'llama-server.exe' : 'llama-server';
+  const destBin = path.join(destDir, exeName);
 
   if (process.platform !== 'win32') {
-    // tar is always available on macOS and Linux
-    execFileSync('tar', ['-xzf', archivePath, '-C', destDir, '--wildcards', '--no-anchored', exeName, '--strip-components=1'], { stdio: 'pipe' });
+    // List archive to find the binary's exact path — avoids GNU-only
+    // flags (--wildcards, --no-anchored) that BSD tar (macOS) rejects.
+    const listing = execFileSync('tar', ['-tzf', archivePath], { encoding: 'utf8', stdio: 'pipe' });
+    const entry = listing.split('\n').find(l => l === exeName || l.endsWith(`/${exeName}`));
+    if (!entry) throw new Error(`${exeName} not found in archive`);
+    const depth = entry.trim().split('/').length - 1;
+    execFileSync('tar', [
+      '-xzf', archivePath,
+      '-C', destDir,
+      `--strip-components=${depth}`,
+      entry.trim(),
+    ], { stdio: 'pipe' });
   } else {
-    // Windows: use PowerShell Expand-Archive for .zip
-    spawnSync('powershell', ['-Command', 'Expand-Archive', '-Path', archivePath, '-DestinationPath', destDir, '-Force'], { stdio: 'pipe' });
-    const extracted = path.join(destDir, exeName);
-    if (!existsSync(extracted)) {
-      execFileSync('find', [destDir, '-name', exeName, '-exec', 'mv', '{}', destDir, ';'], { stdio: 'pipe' });
+    // Windows: .zip — use PowerShell to expand, then find+move the binary.
+    spawnSync('powershell', [
+      '-Command',
+      `Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force`,
+    ], { stdio: 'pipe' });
+    if (!existsSync(destBin)) {
+      // Binary may be nested; use PowerShell to locate and move it.
+      const result = spawnSync('powershell', [
+        '-Command',
+        `Get-ChildItem -Path '${destDir}' -Recurse -Filter '${exeName}' | Select-Object -First 1 -ExpandProperty FullName`,
+      ], { stdio: 'pipe', encoding: 'utf8' });
+      const found = result.stdout.trim();
+      if (!found) throw new Error(`${exeName} not found in extracted archive`);
+      if (found !== destBin) renameSync(found, destBin);
     }
   }
 }

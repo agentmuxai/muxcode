@@ -26,7 +26,8 @@ export async function getServerUrl(
   if (current?.modelPath === modelPath) {
     const alive = await checkHealth(current.baseUrl, 500);
     if (alive) return current.baseUrl;
-    // Server died — clean up and restart
+    // Server unhealthy — kill it before restarting
+    current.proc.kill('SIGTERM');
     current = null;
   }
 
@@ -67,13 +68,18 @@ export async function getServerUrl(
   const baseUrl = `http://127.0.0.1:${port}`;
   current = { modelPath, port, proc, baseUrl };
 
-  await waitForHealth(baseUrl, 45_000);
+  await waitForHealth(proc, baseUrl, 45_000);
   return baseUrl;
 }
 
-async function waitForHealth(baseUrl: string, timeoutMs: number): Promise<void> {
+async function waitForHealth(proc: ChildProcess, baseUrl: string, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    // Bail early if the process has already exited
+    if (proc.exitCode !== null) {
+      current = null;
+      throw new Error(`llama-server exited unexpectedly (code ${proc.exitCode}) during startup`);
+    }
     if (await checkHealth(baseUrl, 300)) return;
     await sleep(300);
   }
