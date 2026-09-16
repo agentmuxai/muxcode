@@ -1,6 +1,6 @@
 {
   "name": "@a5af/muxcode",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "First-party agentic loop CLI for AgentMux — local GGUF inference via llama-server, cloud APIs, full MCP tool execution",
   "type": "module",
   "bin": {
@@ -30,7 +30,7 @@
     "typescript": "^5.7.0"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.18.1"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
