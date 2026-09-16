@@ -9,13 +9,14 @@ import { listInstalled } from './models/list.js';
 import { removeModel } from './models/download.js';
 import { stopServer } from './llama-server/manager.js';
 import { muxHome } from './llama-server/acquire.js';
+import { VERSION } from './version.js';
 import path from 'path';
 
 export function buildCli(): Command {
   program
     .name('muxcode')
     .description('Agentic coding assistant with local and cloud backends')
-    .version('0.1.0');
+    .version(VERSION);
 
   // ── main run command ────────────────────────────────────────────────────────
   program

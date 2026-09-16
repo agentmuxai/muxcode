@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import os from 'os';
 import type { McpTool, ToolCall } from '../types.js';
+import { VERSION } from '../version.js';
 
 interface McpServerConfig {
   command: string;
@@ -43,7 +44,7 @@ export async function initMcpServers(configPath?: string): Promise<McpTool[]> {
       });
 
       const client = new Client(
-        { name: 'mux-code', version: '0.1.0' },
+        { name: 'mux-code', version: VERSION },
         { capabilities: {} }
       );
 
