@@ -2,6 +2,7 @@ import { program, Command } from 'commander';
 import { createBackend } from './backends/index.js';
 import { initMcpServers, closeMcpServers, getActiveServerIds } from './mcp/client.js';
 import { StreamJsonEmitter } from './emit/stream-json.js';
+import { withBuiltinTools } from './tools/index.js';
 import { runLoop } from './loop.js';
 import { isValidSessionId, latestSessionFor, loadSession, SessionWriter } from './session.js';
 import { getCatalog, findModel } from './models/catalog.js';
@@ -101,7 +102,7 @@ export function buildCli(): Command {
         let backend;
         let initEmitted = false;
         try {
-          tools = await initMcpServers(opts.mcpConfig);
+          tools = withBuiltinTools(await initMcpServers(opts.mcpConfig));
           // Plan mode offers only tools that declare themselves read-only.
           if (opts.permissionMode === 'plan') tools = tools.filter(t => t.readOnly);
           emitter.init(opts.model ?? 'auto', getActiveServerIds(), tools.map(t => t.name), opts.permissionMode);

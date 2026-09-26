@@ -97,6 +97,8 @@ export interface McpTool {
   _serverId: string;
   /** The server marked the tool read-only (MCP `annotations.readOnlyHint`). */
   readOnly?: boolean;
+  /** One of Mux Code's own tools (src/tools), run in-process rather than over MCP. */
+  builtin?: boolean;
 }
 
 export interface LoopOptions {
