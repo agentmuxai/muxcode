@@ -10,6 +10,14 @@ import { removeModel } from './models/download.js';
 import { stopServer } from './llama-server/manager.js';
 import { muxHome } from './llama-server/acquire.js';
 import { VERSION } from './version.js';
+import {
+  DEFAULT_MAX_TURNS,
+  EFFORT_LEVELS,
+  OUTPUT_FORMATS,
+  PERMISSION_MODES,
+  resolveRunOptions,
+  type RawRunOptions,
+} from './run-options.js';
 import path from 'path';
 
 export function buildCli(): Command {
@@ -22,21 +30,39 @@ export function buildCli(): Command {
   program
     .command('run', { isDefault: true })
     .description('Run an agentic coding task')
-    .option('-p, --prompt <text>', 'Prompt to execute')
+    .argument('[prompt...]', 'The task; if omitted, it is read from stdin')
+    .option('-p, --print', 'Run one prompt non-interactively and exit (the prompt comes from the arguments or stdin)')
+    .option('--prompt <text>', 'The task, as an option')
     .option('-b, --backend <name>', 'Backend: local | anthropic | openai | openai-compat')
     .option('-m, --model <name>', 'Model name or path')
     .option('--base-url <url>', 'Base URL for openai-compat backend')
     .option('--mcp-config <path>', 'Path to .mcp.json config')
-    .option('--system <text>', 'Override system prompt')
+    .option('--system <text>', 'Replace the system prompt')
+    .option('--append-system-prompt <text>', 'Append to the system prompt')
     .option('--resume <session-id>', 'Resume a previous session by ID')
-    .action(async (opts) => {
-      const prompt = opts.prompt ?? await readStdin();
+    .option('--permission-mode <mode>', `Permission mode: ${PERMISSION_MODES.join(' | ')}`)
+    .option('--dangerously-skip-permissions', 'Run every tool call without asking (same as --permission-mode bypassPermissions)')
+    .option('--effort <level>', `Reasoning effort: ${EFFORT_LEVELS.join(' | ')}`)
+    .option('--max-turns <n>', `Stop after this many model turns (default ${DEFAULT_MAX_TURNS})`)
+    .option('--output-format <format>', `Output: ${OUTPUT_FORMATS.join(' | ')} (default stream-json)`)
+    .option('--verbose', 'Accepted for Claude Code compatibility (stream-json output is always complete)')
+    .option('--include-partial-messages', 'Accepted for Claude Code compatibility')
+    .allowUnknownOption(true)
+    .action(async (words: string[], raw: RawRunOptions) => {
+      let opts;
+      try {
+        opts = resolveRunOptions(raw, words, msg => process.stderr.write(`muxcode: ${msg}\n`));
+      } catch (err) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
+        process.exit(1);
+      }
+      const prompt = opts.prompt ?? (opts.promptWords || await readStdin());
       if (!prompt.trim()) {
-        process.stderr.write('Error: no prompt provided (use -p or pipe via stdin)\n');
+        process.stderr.write('Error: no prompt provided (pass it as an argument, with --prompt, or on stdin)\n');
         process.exit(1);
       }
 
-      const emitter = new StreamJsonEmitter(opts.resume);
+      const emitter = new StreamJsonEmitter(opts.resume, opts.outputFormat);
 
       try {
         let tools;
@@ -44,7 +70,9 @@ export function buildCli(): Command {
         let initEmitted = false;
         try {
           tools = await initMcpServers(opts.mcpConfig);
-          emitter.init(opts.model ?? 'auto', getActiveServerIds(), tools.map(t => t.name));
+          // Plan mode offers only tools that declare themselves read-only.
+          if (opts.permissionMode === 'plan') tools = tools.filter(t => t.readOnly);
+          emitter.init(opts.model ?? 'auto', getActiveServerIds(), tools.map(t => t.name), opts.permissionMode);
           initEmitted = true;
           backend = createBackend({
             backend: opts.backend,
@@ -54,14 +82,18 @@ export function buildCli(): Command {
           });
         } catch (err) {
           // Ensure init always precedes the error event
-          if (!initEmitted) emitter.init(opts.model ?? 'auto', [], []);
+          if (!initEmitted) emitter.init(opts.model ?? 'auto', [], [], opts.permissionMode);
           emitter.error((err as Error).message);
           process.exitCode = 1;
           return;
         }
 
         try {
-          await runLoop(prompt, backend, tools, emitter, opts.system);
+          await runLoop(prompt, backend, tools, emitter, {
+            systemPrompt: opts.system,
+            appendSystemPrompt: opts.appendSystemPrompt,
+            maxTurns: opts.maxTurns,
+          });
         } catch {
           // runLoop already emitted the error event with accumulated token counts
           process.exitCode = 1;

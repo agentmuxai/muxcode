@@ -6,8 +6,6 @@
   "bin": {
     "muxcode": "./bin/muxcode.js"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "files": [
     "bin/",
     "dist/",
@@ -17,7 +15,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node bin/muxcode.js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test": "npm run build && node --test \"test/**/*.test.mjs\"",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

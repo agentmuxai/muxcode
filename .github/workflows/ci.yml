@@ -19,6 +19,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: npm test
       - name: Smoke test the CLI
         run: node bin/muxcode.js --version
       - name: Check what would be published
