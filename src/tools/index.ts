@@ -19,8 +19,8 @@ const BY_NAME = new Map(BUILTINS.map(t => [t.spec.name, t]));
 
 export const BUILTIN_TOOLS: McpTool[] = BUILTINS.map(t => t.spec);
 
-export function newToolContext(cwd = process.cwd()): ToolContext {
-  return { cwd, todos: [] };
+export function newToolContext(cwd = process.cwd(), signal?: AbortSignal): ToolContext {
+  return { cwd, todos: [], signal };
 }
 
 /**

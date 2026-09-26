@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
 import type { BuiltinTool } from './types.js';
@@ -73,6 +73,8 @@ export const bashTool: BuiltinTool = {
     const stdout = new HeadTail(MAX_OUTPUT_CHARS);
     const stderr = new HeadTail(MAX_OUTPUT_CHARS);
     let interrupted = false;
+    let aborted = false;
+    if (ctx.signal?.aborted) throw new ToolError('The run was interrupted before the command started.');
 
     const { code, signal } = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
       const child = spawn(sh.file, sh.args(command), {
@@ -84,6 +86,7 @@ export const bashTool: BuiltinTool = {
         // Its own process group on Unix, so a timeout can kill the whole tree.
         detached: process.platform !== 'win32',
       });
+      if (child.pid !== undefined) running.add(child.pid);
       child.stdout.setEncoding('utf8').on('data', (d: string) => stdout.push(d));
       child.stderr.setEncoding('utf8').on('data', (d: string) => stderr.push(d));
 
@@ -92,6 +95,8 @@ export const bashTool: BuiltinTool = {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        ctx.signal?.removeEventListener('abort', onAbort);
+        if (child.pid !== undefined) running.delete(child.pid);
         child.stdout.destroy();
         child.stderr.destroy();
         resolve({ code, signal });
@@ -100,11 +105,20 @@ export const bashTool: BuiltinTool = {
         interrupted = true;
         killTree(child.pid);
       }, timeoutMs);
+      // Ctrl+C / SIGTERM on the run stops the command too.
+      const onAbort = () => {
+        interrupted = true;
+        aborted = true;
+        killTree(child.pid);
+      };
+      ctx.signal?.addEventListener('abort', onAbort, { once: true });
 
       child.on('error', err => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        ctx.signal?.removeEventListener('abort', onAbort);
+        if (child.pid !== undefined) running.delete(child.pid);
         reject(new ToolError(`Could not start ${sh.file}: ${err.message}`));
       });
       child.on('exit', (code, signal) => setTimeout(() => finish(code, signal), PIPE_GRACE_MS));
@@ -114,7 +128,8 @@ export const bashTool: BuiltinTool = {
     const out = stdout.toString();
     const err = stderr.toString();
     const parts = [out.replace(/\n$/, ''), err.replace(/\n$/, '')].filter(Boolean);
-    if (interrupted) parts.push(`Command timed out after ${timeoutMs} ms and was killed.`);
+    if (aborted) parts.push('Command was interrupted and killed.');
+    else if (interrupted) parts.push(`Command timed out after ${timeoutMs} ms and was killed.`);
     else if (code !== 0) parts.push(code === null ? `Killed by signal ${signal}` : `Exit code ${code}`);
 
     return {
@@ -124,6 +139,28 @@ export const bashTool: BuiltinTool = {
     };
   },
 };
+
+/**
+ * Commands still running. If the process exits anyway (a forced exit after an
+ * interrupt), they would be left behind as orphans in their own process
+ * group, so the exit hook kills them synchronously.
+ */
+const running = new Set<number>();
+process.on('exit', () => {
+  for (const pid of running) killTreeSync(pid);
+});
+
+function killTreeSync(pid: number) {
+  if (process.platform === 'win32') {
+    spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+    return;
+  }
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+  }
+}
 
 /** Kill a process and everything it started. */
 function killTree(pid: number | undefined) {

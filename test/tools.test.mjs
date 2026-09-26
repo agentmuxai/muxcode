@@ -1,7 +1,7 @@
 // The built-in tools (src/tools), called directly from dist/ and through the
 // CLI with a fake model that calls a tool and then answers.
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -351,3 +351,44 @@ describe('built-in tools through the CLI', () => {
     assert.match(r.stderr, /Ignoring MCP tool "Read"/);
   });
 });
+
+// ReAgent P1 on #46: an interrupt must stop a running Bash command, not leave
+// it running (it's in its own process group, so nothing else would kill it).
+test('interrupting the run kills a running Bash command and everything it started', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'muxcode-abort-'));
+  try {
+    const ac = new AbortController();
+    const ctx = newToolContext(dir, ac.signal);
+    const started = Date.now();
+    setTimeout(() => ac.abort(), 400);
+    const out = await executeBuiltinTool({
+      id: 'b1',
+      name: 'Bash',
+      input: { command: `node -e "setTimeout(()=>require('fs').writeFileSync('marker','x'),1500)"` },
+    }, ctx);
+    assert.equal(out.isError, true);
+    assert.equal(out.structured.interrupted, true);
+    assert.match(out.content, /interrupted/);
+    assert.ok(Date.now() - started < 1400, 'returned promptly after the interrupt');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    assert.equal(readdirSafe(dir).includes('marker'), false, 'the command was killed before it wrote the file');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a Bash call made after the interrupt does not start', async () => {
+  const ac = new AbortController();
+  ac.abort();
+  const out = await executeBuiltinTool({ id: 'b2', name: 'Bash', input: { command: 'echo hi' } }, newToolContext(os.tmpdir(), ac.signal));
+  assert.equal(out.isError, true);
+  assert.match(out.content, /interrupted before the command started/);
+});
+
+function readdirSafe(dir) {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
+}

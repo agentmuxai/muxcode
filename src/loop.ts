@@ -48,7 +48,7 @@ export async function runLoop(
   };
   push({ role: 'user', content: prompt });
 
-  const toolContext = newToolContext();
+  const toolContext = newToolContext(process.cwd(), settings.signal);
   let finalText = '';
   const totals: RunTotals = {
     usage: { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
