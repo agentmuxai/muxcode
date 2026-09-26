@@ -4,6 +4,7 @@
 // uses JavaScript regex syntax, which agrees with ripgrep's for the patterns
 // models usually write.
 import { spawn } from 'child_process';
+import { Worker } from 'worker_threads';
 import { readdir, readFile, stat } from 'fs/promises';
 import path from 'path';
 import type { BuiltinTool } from './types.js';
@@ -32,6 +33,8 @@ const MAX_OUTPUT_CHARS = 30_000;
 const MAX_LINES = 20_000;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const SKIP_DIRS = new Set(['.git', 'node_modules']);
+/** The JS fallback's time budget; a runaway regex is stopped here. */
+export const JS_FALLBACK_TIMEOUT_MS = 60_000;
 
 let rgPath: string | null | undefined;
 
@@ -97,22 +100,31 @@ export const grepTool: BuiltinTool = {
     }
 
     if (rgPath === undefined) rgPath = findOnPath('rg');
-    const lines = rgPath ? await ripgrep(rgPath, opts) : await grepJs(opts);
+    // files_with_matches lists the newest files first: collect them all, sort,
+    // then apply head_limit (format), or the limit would keep arbitrary files.
+    const collect = opts.mode === 'files_with_matches' ? { ...opts, limit: undefined } : opts;
+    const lines = rgPath
+      ? await ripgrep(rgPath, collect, ctx.signal)
+      : await grepJsGuarded(collect, { signal: ctx.signal });
     return format(lines, opts);
   },
 };
 
 async function format(lines: string[], opts: GrepOptions): Promise<string> {
+  if (opts.mode === 'files_with_matches') {
+    // Newest first, as Claude Code's Grep lists them; head_limit applies after,
+    // so it keeps the newest files rather than whichever were found first.
+    const withTimes = await Promise.all(lines.map(async f => ({ f, t: await stat(f).then(s => s.mtimeMs, () => 0) })));
+    withTimes.sort((a, b) => b.t - a.t || a.f.localeCompare(b.f));
+    lines = withTimes.map(x => x.f);
+  }
   if (opts.limit !== undefined) lines = lines.slice(0, opts.limit);
   // A context-group separator left dangling by the limit.
   if (lines.at(-1) === '--') lines = lines.slice(0, -1);
   if (lines.length === 0) return opts.mode === 'files_with_matches' ? 'No files found' : 'No matches found';
 
   if (opts.mode === 'files_with_matches') {
-    // Newest first, as Claude Code's Grep lists them.
-    const withTimes = await Promise.all(lines.map(async f => ({ f, t: await stat(f).then(s => s.mtimeMs, () => 0) })));
-    withTimes.sort((a, b) => b.t - a.t || a.f.localeCompare(b.f));
-    return capText(`Found ${lines.length} file${lines.length === 1 ? '' : 's'}\n${withTimes.map(x => x.f).join('\n')}`, MAX_OUTPUT_CHARS);
+    return capText(`Found ${lines.length} file${lines.length === 1 ? '' : 's'}\n${lines.join('\n')}`, MAX_OUTPUT_CHARS);
   }
   if (opts.mode === 'count') {
     const total = lines.reduce((sum, l) => sum + (Number(l.slice(l.lastIndexOf(':') + 1)) || 0), 0);
@@ -121,7 +133,7 @@ async function format(lines: string[], opts: GrepOptions): Promise<string> {
   return capText(lines.join('\n'), MAX_OUTPUT_CHARS);
 }
 
-function ripgrep(rg: string, opts: GrepOptions): Promise<string[]> {
+function ripgrep(rg: string, opts: GrepOptions, signal?: AbortSignal): Promise<string[]> {
   // Hidden files are searched, .git and node_modules are not, and .gitignore
   // applies even outside a git repo, matching the JS fallback.
   const args = [
@@ -144,7 +156,7 @@ function ripgrep(rg: string, opts: GrepOptions): Promise<string[]> {
 
   const limit = opts.limit ?? MAX_LINES;
   return new Promise((resolve, reject) => {
-    const child = spawn(rg, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    const child = spawn(rg, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, signal });
     const lines: string[] = [];
     let partial = '';
     let stderr = '';
@@ -163,13 +175,48 @@ function ripgrep(rg: string, opts: GrepOptions): Promise<string[]> {
       }
     });
     child.stderr.setEncoding('utf8').on('data', (d: string) => (stderr += d));
-    child.on('error', err => reject(new ToolError(`Could not run ripgrep: ${err.message}`)));
+    child.on('error', err => reject(new ToolError(
+      signal?.aborted ? 'Grep was interrupted.' : `Could not run ripgrep: ${err.message}`,
+    )));
     child.on('close', code => {
       if (!full && partial) lines.push(partial);
       // 1 = no matches; 2 = an error, though matches found elsewhere still count.
       if (code === 2 && lines.length === 0 && !full) reject(new ToolError(stderr.trim() || 'ripgrep failed'));
       else resolve(lines);
     });
+  });
+}
+
+/**
+ * The JS fallback, run in a worker (grep-worker.ts) so a catastrophically
+ * backtracking pattern can't freeze the CLI: the worker is terminated after
+ * `timeoutMs` or when the run is interrupted.
+ */
+export function grepJsGuarded(
+  opts: GrepOptions,
+  { signal, timeoutMs = JS_FALLBACK_TIMEOUT_MS }: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<string[]> {
+  if (signal?.aborted) return Promise.reject(new ToolError('Grep was interrupted.'));
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./grep-worker.js', import.meta.url), { workerData: opts });
+    let done = false;
+    const finish = (fn: () => void) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      void worker.terminate();
+      fn();
+    };
+    const timer = setTimeout(() => finish(() => reject(new ToolError(
+      `Grep stopped after ${Math.round(timeoutMs / 1000)} s: the pattern may backtrack catastrophically. ` +
+      'Simplify it (avoid nested quantifiers like (a+)+), narrow path/glob, or install ripgrep.',
+    ))), timeoutMs);
+    const onAbort = () => finish(() => reject(new ToolError('Grep was interrupted.')));
+    signal?.addEventListener('abort', onAbort, { once: true });
+    worker.once('message', (m: { ok: boolean; lines?: string[]; message?: string }) =>
+      finish(() => (m.ok ? resolve(m.lines ?? []) : reject(new ToolError(m.message ?? 'Grep failed')))));
+    worker.once('error', err => finish(() => reject(new ToolError(`Grep failed: ${err.message}`))));
   });
 }
 

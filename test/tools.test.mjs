@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { executeBuiltinTool, newToolContext } from '../dist/tools/index.js';
-import { grepJs } from '../dist/tools/grep.js';
+import { grepJs, grepJsGuarded } from '../dist/tools/grep.js';
 import { FIXTURE_MCP_CONFIG, runMuxcode, startFakeModel } from './helpers.mjs';
 
 let dir;
@@ -392,3 +392,68 @@ function readdirSafe(dir) {
     return [];
   }
 }
+
+// ReAgent P1 on #46: a catastrophically backtracking pattern in the JS fallback
+// must not freeze the CLI.
+test('the JS Grep fallback stops a runaway regex without blocking the main thread', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'muxcode-redos-'));
+  try {
+    writeFileSync(path.join(dir, 'bad.txt'), 'a'.repeat(30) + 'b\n');
+    const opts = { pattern: '^(a+)+$', root: dir, mode: 'files_with_matches', ignoreCase: false, lineNumbers: true, before: 0, after: 0, multiline: false };
+    let ticks = 0;
+    const ticker = setInterval(() => ticks++, 50);
+    const started = Date.now();
+    await assert.rejects(grepJsGuarded(opts, { timeoutMs: 500 }), /backtrack catastrophically/);
+    clearInterval(ticker);
+    assert.ok(Date.now() - started < 5000, 'stopped near the time budget');
+    assert.ok(ticks >= 5, 'the main thread kept running while the pattern was being matched');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an interrupt stops the JS Grep fallback', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'muxcode-redos-'));
+  try {
+    writeFileSync(path.join(dir, 'bad.txt'), 'a'.repeat(30) + 'b\n');
+    const opts = { pattern: '^(a+)+$', root: dir, mode: 'content', ignoreCase: false, lineNumbers: true, before: 0, after: 0, multiline: false };
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 300);
+    await assert.rejects(grepJsGuarded(opts, { signal: ac.signal }), /interrupted/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the guarded JS fallback returns what the direct search returns', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'muxcode-grepw-'));
+  try {
+    writeFileSync(path.join(dir, 'a.txt'), 'alpha\nbeta\n');
+    writeFileSync(path.join(dir, 'b.txt'), 'gamma\nalphabet\n');
+    const opts = { pattern: 'alpha', root: dir, mode: 'content', ignoreCase: false, lineNumbers: true, before: 0, after: 0, multiline: false };
+    assert.deepEqual((await grepJsGuarded(opts)).sort(), (await grepJs(opts)).sort());
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ReAgent P2 on #46: head_limit must keep the NEWEST matching files.
+test('Grep head_limit keeps the newest matching files', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'muxcode-headlimit-'));
+  try {
+    const now = Date.now() / 1000;
+    for (let i = 0; i < 6; i++) {
+      const f = path.join(dir, `f${i}.txt`);
+      writeFileSync(f, 'needle\n');
+      utimesSync(f, now - 1000 + i * 100, now - 1000 + i * 100); // f5 newest
+    }
+    const out = await executeBuiltinTool({ id: 'g1', name: 'Grep', input: { pattern: 'needle', head_limit: 2 } }, newToolContext(dir));
+    const files = out.content.split('\n').slice(1).map(f => path.basename(f));
+    assert.deepEqual(files, ['f5.txt', 'f4.txt']);
+
+    const js = await grepJsGuarded({ pattern: 'needle', root: dir, mode: 'files_with_matches', ignoreCase: false, lineNumbers: true, before: 0, after: 0, multiline: false });
+    assert.equal(js.length, 6, 'the fallback collects every match; the limit is applied after sorting');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
