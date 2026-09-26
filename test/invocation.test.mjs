@@ -66,7 +66,10 @@ test('prompt words that only look like options are kept', async () => {
   assert.doesNotMatch(r.stderr, /ignoring unknown option/);
 });
 
-test('plan mode offers only the tools an MCP server marks read-only', async () => {
+const BUILTINS = ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'TodoWrite'];
+const READ_ONLY_BUILTINS = ['Read', 'Grep', 'Glob', 'TodoWrite'];
+
+test('plan mode offers only read-only tools: built-in and MCP', async () => {
   const before = model.requests.length;
   const r = await runMuxcode(['run', '-p', '--permission-mode', 'plan'], {
     stdin: 'look around',
@@ -74,11 +77,11 @@ test('plan mode offers only the tools an MCP server marks read-only', async () =
     files: { '.mcp.json': FIXTURE_MCP_CONFIG },
   });
   assert.equal(r.code, 0, r.stderr);
-  assert.deepEqual(r.frames[0].tools, ['read_thing']);
-  assert.deepEqual(model.requests[before].tools.map(t => t.function.name), ['read_thing']);
+  assert.deepEqual(r.frames[0].tools, [...READ_ONLY_BUILTINS, 'read_thing']);
+  assert.deepEqual(model.requests[before].tools.map(t => t.function.name), [...READ_ONLY_BUILTINS, 'read_thing']);
 });
 
-test('other modes offer every MCP tool', async () => {
+test('other modes offer every tool, built-ins first', async () => {
   const before = model.requests.length;
   const r = await runMuxcode(['run', '-p', '--dangerously-skip-permissions'], {
     stdin: 'do it',
@@ -86,8 +89,8 @@ test('other modes offer every MCP tool', async () => {
     files: { '.mcp.json': FIXTURE_MCP_CONFIG },
   });
   assert.equal(r.code, 0, r.stderr);
-  assert.deepEqual(r.frames[0].tools.sort(), ['read_thing', 'write_thing']);
-  assert.equal(model.requests[before].tools.length, 2);
+  assert.deepEqual(r.frames[0].tools, [...BUILTINS, 'read_thing', 'write_thing']);
+  assert.deepEqual(model.requests[before].tools.map(t => t.function.name), [...BUILTINS, 'read_thing', 'write_thing']);
 });
 
 test('an invalid permission mode fails before calling the model', async () => {

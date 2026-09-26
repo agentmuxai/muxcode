@@ -50,6 +50,23 @@ muxcode model du          # disk used by installed models
 
 `muxcode auth status` exits 0 when any backend is ready.
 
+## Tools
+
+Built-in tools use Claude Code's names and parameters, so AgentMux renders them the same way:
+
+| Tool | Parameters | Notes |
+|---|---|---|
+| `Read` | `file_path`, `offset`, `limit` | Text files, `cat -n` format, 2000 lines by default |
+| `Write` | `file_path`, `content` | Creates parent directories |
+| `Edit` | `file_path`, `old_string`, `new_string`, `replace_all` | Exact match; keeps CRLF line endings and a BOM |
+| `Bash` | `command`, `timeout`, `description` | bash (`/bin/sh` if missing); on Windows Git Bash if found, else `cmd.exe`. Timeout 2 min (max 10) |
+| `Grep` | `pattern`, `path`, `glob`, `type`, `output_mode`, `-i`, `-n`, `-A`/`-B`/`-C`, `head_limit`, `multiline` | ripgrep if `rg` is on `PATH`, else a built-in search |
+| `Glob` | `pattern`, `path` | Newest first |
+| `TodoWrite` | `todos` | The task checklist |
+
+MCP tools from `.mcp.json` come after them; one with a built-in's name is ignored. With `--permission-mode plan`
+only read-only tools are offered (`Read`, `Grep`, `Glob`, `TodoWrite`, and MCP tools marked read-only).
+
 ## Develop
 
 ```sh

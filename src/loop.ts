@@ -1,5 +1,6 @@
 import type { CompleteOptions, IBackend, McpTool, Message, ToolCall } from './types.js';
 import { executeTool } from './mcp/client.js';
+import { executeBuiltinTool, newToolContext, type ToolContext, type ToolOutput } from './tools/index.js';
 import type { ResultSubtype, RunTotals, StreamJsonEmitter } from './emit/stream-json.js';
 import { costUsd } from './pricing.js';
 import type { SessionWriter } from './session.js';
@@ -47,6 +48,7 @@ export async function runLoop(
   };
   push({ role: 'user', content: prompt });
 
+  const toolContext = newToolContext();
   let finalText = '';
   const totals: RunTotals = {
     usage: { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
@@ -93,10 +95,9 @@ export async function runLoop(
       // Execute tool calls sequentially — MCP Client is not concurrency-safe
       for (const call of response.toolCalls) {
         settings.signal?.throwIfAborted();
-        const output = await executeTool(call, tools);
-        const isError = isErrorOutput(output);
-        emitter.toolResult(call.id, output, isError);
-        push(toolMessage(call, output, isError));
+        const out = await runTool(call, tools, toolContext);
+        emitter.toolResult(call.id, out.content, out.isError, out.structured);
+        push(toolMessage(call, out.content, out.isError));
       }
     }
 
@@ -113,6 +114,17 @@ export async function runLoop(
     emitter.error((err as Error).message, totals, typeof status === 'number' ? status : undefined);
     throw new LoopError((err as Error).message);
   }
+}
+
+/**
+ * Built-ins run in-process and say whether they failed; MCP tools go to their
+ * server. Only tools offered this run can run (plan mode offers fewer).
+ */
+async function runTool(call: ToolCall, tools: McpTool[], ctx: ToolContext): Promise<ToolOutput> {
+  const tool = tools.find(t => t.name === call.name);
+  if (tool?.builtin) return executeBuiltinTool(call, ctx);
+  const output = await executeTool(call, tools);
+  return { content: output, isError: isErrorOutput(output) };
 }
 
 function toolMessage(call: ToolCall, output: string, isError: boolean): Message {
