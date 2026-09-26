@@ -43,6 +43,7 @@ export class LocalBackend implements IBackend {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: opts.signal,
     });
 
     if (!res.ok || !res.body) {

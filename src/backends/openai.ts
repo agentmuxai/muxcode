@@ -33,7 +33,7 @@ export class OpenAiBackend implements IBackend {
       ...(opts.effort
         ? { reasoning_effort: (opts.effort === 'max' ? 'high' : opts.effort) as 'low' | 'medium' | 'high' }
         : { temperature: 0.1 }),
-    });
+    }, { signal: opts.signal });
     return consumeOpenAiStream(stream as AsyncIterable<OpenAiChunk>, sink, this.model, start);
   }
 }

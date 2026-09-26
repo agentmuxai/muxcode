@@ -31,6 +31,7 @@ export interface RunOptions {
   system?: string;
   appendSystemPrompt?: string;
   resume?: string;
+  continueLatest: boolean;
   permissionMode: PermissionMode;
   outputFormat: OutputFormat;
   effort?: EffortLevel;
@@ -48,6 +49,7 @@ export interface RawRunOptions {
   system?: string;
   appendSystemPrompt?: string;
   resume?: string;
+  continue?: boolean;
   dangerouslySkipPermissions?: boolean;
   permissionMode?: string;
   outputFormat?: string;
@@ -107,6 +109,7 @@ export function resolveRunOptions(
     system: raw.system,
     appendSystemPrompt: raw.appendSystemPrompt,
     resume: raw.resume,
+    continueLatest: raw.continue === true,
     permissionMode,
     outputFormat: raw.outputFormat ? oneOf('--output-format', raw.outputFormat, OUTPUT_FORMATS) : 'stream-json',
     effort: raw.effort ? oneOf('--effort', raw.effort, EFFORT_LEVELS) : undefined,

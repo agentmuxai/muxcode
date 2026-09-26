@@ -157,10 +157,5 @@ process.on('exit', () => {
   if (current) current.proc.kill('SIGKILL');
 });
 
-process.on('SIGINT', () => {
-  stopServer().finally(() => process.exit(0));
-});
-
-process.on('SIGTERM', () => {
-  stopServer().finally(() => process.exit(0));
-});
+// SIGINT/SIGTERM are handled by `muxcode run` (it finishes the transcript and
+// stops the server); the exit hook above is the backstop.

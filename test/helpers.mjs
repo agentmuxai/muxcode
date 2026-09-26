@@ -25,6 +25,8 @@ export async function startFakeModel(reply = () => ({ content: 'done' })) {
       const n = requests.length;
       requests.push(body);
       const r = reply(body, n);
+      // `delayMs` holds the response back (e.g. so a test can interrupt mid-request).
+      const respond = () => {
       if (r.status) {
         res.statusCode = r.status;
         res.setHeader('Content-Type', 'application/json');
@@ -58,6 +60,9 @@ export async function startFakeModel(reply = () => ({ content: 'done' })) {
       out.push({ ...base, choices: [], usage });
       res.setHeader('Content-Type', 'text/event-stream');
       res.end(out.map(c => `data: ${JSON.stringify(c)}\n\n`).join('') + 'data: [DONE]\n\n');
+      };
+      if (r.delayMs) setTimeout(respond, r.delayMs);
+      else respond();
     });
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -139,8 +144,8 @@ export function streamEvents(frames) {
  * Run `bin/muxcode.js` in an empty temp dir with an isolated home (so no real
  * `.mcp.json` or config is picked up), pointed at `modelUrl`.
  */
-export function runMuxcode(args, { stdin = '', modelUrl, env = {}, files = {} } = {}) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'muxcode-test-'));
+export function runMuxcode(args, { stdin = '', modelUrl, env = {}, files = {}, cwd, onSpawn } = {}) {
+  const dir = cwd ?? mkdtempSync(path.join(os.tmpdir(), 'muxcode-test-'));
   for (const [name, content] of Object.entries(files)) {
     writeFileSync(path.join(dir, name), typeof content === 'string' ? content : JSON.stringify(content));
   }
@@ -156,13 +161,14 @@ export function runMuxcode(args, { stdin = '', modelUrl, env = {}, files = {} } 
   });
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [BIN, ...args], { cwd: dir, env: childEnv });
+    onSpawn?.(child);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', d => (stdout += d));
     child.stderr.on('data', d => (stderr += d));
     child.on('error', reject);
     child.on('close', code => {
-      rmSync(dir, { recursive: true, force: true });
+      if (!cwd) rmSync(dir, { recursive: true, force: true });
       const frames = stdout
         .split('\n')
         .filter(line => line.trim().startsWith('{'))
