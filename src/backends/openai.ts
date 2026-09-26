@@ -1,10 +1,11 @@
 import OpenAI from 'openai';
-import type { IBackend, Message, McpTool, CompletionResponse, ToolCall } from '../types.js';
+import type { CompleteOptions, CompletionResponse, IBackend, McpTool, Message, StreamSink } from '../types.js';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js';
+import { consumeOpenAiStream, type OpenAiChunk } from './openai-stream.js';
 
 export class OpenAiBackend implements IBackend {
   private client: OpenAI;
-  private model: string;
+  readonly model: string;
 
   constructor(model = 'gpt-4o', baseUrl?: string) {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -19,59 +20,33 @@ export class OpenAiBackend implements IBackend {
     this.model = model;
   }
 
-  async complete(messages: Message[], tools: McpTool[]): Promise<CompletionResponse> {
+  async complete(messages: Message[], tools: McpTool[], sink: StreamSink, opts: CompleteOptions = {}): Promise<CompletionResponse> {
     const start = Date.now();
-
-    const response = await this.client.chat.completions.create({
+    const stream = await this.client.chat.completions.create({
       model: this.model,
       messages: messages.map(toOpenAiMessage),
-      tools: tools.length ? tools.map(t => ({
-        type: 'function' as const,
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: t.inputSchema,
-        },
-      })) : undefined,
+      tools: tools.length ? tools.map(toOpenAiTool) : undefined,
       tool_choice: tools.length ? 'auto' : undefined,
-      temperature: 0.1,
+      stream: true,
+      stream_options: { include_usage: true },
+      // Reasoning models reject a temperature; set effort instead.
+      ...(opts.effort
+        ? { reasoning_effort: (opts.effort === 'max' ? 'high' : opts.effort) as 'low' | 'medium' | 'high' }
+        : { temperature: 0.1 }),
     });
-
-    if (!response.choices.length) {
-      throw new Error('OpenAI returned empty choices array');
-    }
-    const choice = response.choices[0];
-    const msg = choice.message;
-
-    const toolCalls: ToolCall[] = (msg.tool_calls ?? []).map(tc => {
-      let parsedInput: Record<string, unknown>;
-      try {
-        parsedInput = JSON.parse(tc.function.arguments);
-      } catch {
-        parsedInput = { _raw: tc.function.arguments };
-      }
-      return {
-        id: tc.id,
-        name: tc.function.name,
-        input: parsedInput,
-      };
-    });
-
-    return {
-      text: msg.content ?? '',
-      toolCalls,
-      inputTokens: response.usage?.prompt_tokens ?? 0,
-      outputTokens: response.usage?.completion_tokens ?? 0,
-      durationMs: Date.now() - start,
-      stopReason: choice.finish_reason === 'tool_calls' ? 'tool_use'
-               : choice.finish_reason === 'length'    ? 'max_tokens'
-               : 'end_turn',
-    };
+    return consumeOpenAiStream(stream as AsyncIterable<OpenAiChunk>, sink, this.model, start);
   }
 }
 
-function toOpenAiMessage(m: Message): ChatCompletionMessageParam {
-  // For ContentPart[] (tool-use turns), extract text blocks; '' → null so that
+export function toOpenAiTool(t: McpTool) {
+  return {
+    type: 'function' as const,
+    function: { name: t.name, description: t.description, parameters: t.inputSchema },
+  };
+}
+
+export function toOpenAiMessage(m: Message): ChatCompletionMessageParam {
+  // For ContentPart[] (tool-use turns), keep the text blocks; '' → null so that
   // tool-only assistant turns don't send empty-string content alongside tool_calls
   // (some compat endpoints reject that combination).
   const content = typeof m.content === 'string'

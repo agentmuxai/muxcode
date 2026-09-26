@@ -146,6 +146,9 @@ test('--max-turns stops the loop', async () => {
     const r = await runMuxcode(['run', '-p', '--max-turns', '2'], { stdin: 'loop', modelUrl: looping.url });
     assert.equal(looping.requests.length, 2);
     const result = r.frames.find(f => f.type === 'result');
+    assert.equal(result.subtype, 'error_max_turns');
+    assert.equal(result.is_error, true);
+    assert.equal(result.num_turns, 2);
     assert.match(result.result, /Stopped after 2 turns/);
   } finally {
     await looping.close();

@@ -93,6 +93,7 @@ export function buildCli(): Command {
             systemPrompt: opts.system,
             appendSystemPrompt: opts.appendSystemPrompt,
             maxTurns: opts.maxTurns,
+            effort: opts.effort,
           });
         } catch {
           // runLoop already emitted the error event with accumulated token counts

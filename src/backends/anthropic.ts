@@ -1,10 +1,25 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { IBackend, Message, McpTool, CompletionResponse, ToolCall } from '../types.js';
+import type {
+  CompleteOptions,
+  CompletionResponse,
+  ContentPart,
+  IBackend,
+  McpTool,
+  Message,
+  StopReason,
+  StreamSink,
+  ToolCall,
+  Usage,
+} from '../types.js';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages.js';
+
+/** Thinking budget per effort level; the answer gets DEFAULT_MAX_TOKENS on top. */
+const THINKING_BUDGET = { low: 2048, medium: 8192, high: 16384, max: 32000 } as const;
+const DEFAULT_MAX_TOKENS = 8192;
 
 export class AnthropicBackend implements IBackend {
   private client: Anthropic;
-  private model: string;
+  readonly model: string;
 
   constructor(model = 'claude-sonnet-4-6') {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -13,17 +28,19 @@ export class AnthropicBackend implements IBackend {
     this.model = model;
   }
 
-  async complete(messages: Message[], tools: McpTool[]): Promise<CompletionResponse> {
+  async complete(messages: Message[], tools: McpTool[], sink: StreamSink, opts: CompleteOptions = {}): Promise<CompletionResponse> {
     const start = Date.now();
 
     const systemMsg = messages.find(m => m.role === 'system');
     const nonSystem = messages.filter(m => m.role !== 'system');
+    const budget = opts.effort ? THINKING_BUDGET[opts.effort] : 0;
 
-    const response = await this.client.messages.create({
+    const stream = this.client.messages.stream({
       model: this.model,
-      max_tokens: 8192,
+      max_tokens: DEFAULT_MAX_TOKENS + budget,
       system: systemMsg ? String(systemMsg.content) : undefined,
       messages: toAnthropicMessages(nonSystem),
+      ...(budget ? { thinking: { type: 'enabled' as const, budget_tokens: budget } } : {}),
       ...(tools.length ? {
         tools: tools.map(t => ({
           name: t.name,
@@ -33,29 +50,71 @@ export class AnthropicBackend implements IBackend {
       } : {}),
     });
 
-    const toolCalls: ToolCall[] = response.content
-      .filter(b => b.type === 'tool_use')
-      .map(b => {
-        const tb = b as Anthropic.ToolUseBlock;
-        return { id: tb.id, name: tb.name, input: tb.input as Record<string, unknown> };
-      });
+    // Anthropic's stream events are already the shape AgentMux renders.
+    for await (const ev of stream) {
+      switch (ev.type) {
+        case 'message_start':
+          sink.messageStart(ev.message.id, ev.message.model, toUsage(ev.message.usage));
+          break;
+        case 'content_block_start': {
+          const b = ev.content_block;
+          if (b.type === 'tool_use') sink.blockStart(ev.index, { type: 'tool_use', id: b.id, name: b.name });
+          else if (b.type === 'text') sink.blockStart(ev.index, { type: 'text' });
+          else sink.blockStart(ev.index, { type: 'thinking' });
+          break;
+        }
+        case 'content_block_delta':
+          if (ev.delta.type === 'text_delta') sink.textDelta(ev.index, ev.delta.text);
+          else if (ev.delta.type === 'thinking_delta') sink.thinkingDelta(ev.index, ev.delta.thinking);
+          else if (ev.delta.type === 'input_json_delta') sink.inputJsonDelta(ev.index, ev.delta.partial_json);
+          break;
+        case 'content_block_stop':
+          sink.blockStop(ev.index);
+          break;
+      }
+    }
 
-    const text = response.content
-      .filter(b => b.type === 'text')
-      .map(b => (b as Anthropic.TextBlock).text)
-      .join('');
+    const final = await stream.finalMessage();
+    const usage = toUsage(final.usage);
+    const stopReason: StopReason =
+      final.stop_reason === 'tool_use' || final.stop_reason === 'max_tokens' || final.stop_reason === 'stop_sequence'
+        ? final.stop_reason
+        : 'end_turn';
+    sink.messageDelta(stopReason, usage);
+
+    const content = final.content as unknown as ContentPart[];
+    const toolCalls: ToolCall[] = final.content
+      .filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
+      .map(b => ({ id: b.id, name: b.name, input: b.input as Record<string, unknown> }));
 
     return {
-      text,
+      id: final.id,
+      model: final.model,
+      content,
+      text: final.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map(b => b.text)
+        .join(''),
       toolCalls,
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
+      usage,
       durationMs: Date.now() - start,
-      stopReason: response.stop_reason === 'tool_use'   ? 'tool_use'
-               : response.stop_reason === 'max_tokens' ? 'max_tokens'
-               : 'end_turn',
+      stopReason,
     };
   }
+}
+
+function toUsage(u: {
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+  cache_read_input_tokens?: number | null;
+}): Usage {
+  return {
+    inputTokens: u.input_tokens ?? 0,
+    outputTokens: u.output_tokens ?? 0,
+    cacheCreationInputTokens: u.cache_creation_input_tokens ?? 0,
+    cacheReadInputTokens: u.cache_read_input_tokens ?? 0,
+  };
 }
 
 function toAnthropicMessages(messages: Message[]): MessageParam[] {
@@ -63,12 +122,13 @@ function toAnthropicMessages(messages: Message[]): MessageParam[] {
 
   for (const m of messages) {
     if (m.role === 'assistant') {
-      // Content already contains Anthropic-format blocks (text + tool_use) from loop.ts
+      // The response's own blocks (text, thinking with its signature, tool_use),
+      // as the API requires them back when thinking is on.
       result.push({
         role: 'assistant',
         content: typeof m.content === 'string'
           ? m.content
-          : (m.content as Anthropic.ContentBlock[]),
+          : (m.content as unknown as Anthropic.ContentBlockParam[]),
       });
     } else if (m.role === 'tool') {
       // Anthropic expects tool results as a user message with tool_result content blocks.
@@ -77,6 +137,7 @@ function toAnthropicMessages(messages: Message[]): MessageParam[] {
         type: 'tool_result',
         tool_use_id: m.tool_use_id ?? m.tool_call_id ?? '',
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        ...(m.is_error ? { is_error: true } : {}),
       };
 
       const last = result[result.length - 1];
