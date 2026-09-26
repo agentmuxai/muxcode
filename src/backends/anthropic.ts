@@ -120,6 +120,22 @@ function toUsage(u: {
 function toAnthropicMessages(messages: Message[]): MessageParam[] {
   const result: MessageParam[] = [];
 
+  // The API rejects two turns in a row from the same role. Tool results
+  // followed by a new prompt, or a prompt whose run was interrupted before the
+  // model answered (then resumed), are both consecutive user turns: merge them
+  // into one user message.
+  const pushUser = (blocks: Anthropic.ContentBlockParam[]) => {
+    const last = result[result.length - 1];
+    if (last?.role === 'user') {
+      const prev: Anthropic.ContentBlockParam[] = typeof last.content === 'string'
+        ? [{ type: 'text', text: last.content }]
+        : (last.content as Anthropic.ContentBlockParam[]);
+      last.content = [...prev, ...blocks];
+    } else {
+      result.push({ role: 'user', content: blocks });
+    }
+  };
+
   for (const m of messages) {
     if (m.role === 'assistant') {
       // The response's own blocks (text, thinking with its signature, tool_use),
@@ -131,27 +147,15 @@ function toAnthropicMessages(messages: Message[]): MessageParam[] {
           : (m.content as unknown as Anthropic.ContentBlockParam[]),
       });
     } else if (m.role === 'tool') {
-      // Anthropic expects tool results as a user message with tool_result content blocks.
-      // Merge consecutive tool results into a single user message.
-      const block: Anthropic.ToolResultBlockParam = {
+      // Anthropic expects tool results as tool_result blocks in a user message.
+      pushUser([{
         type: 'tool_result',
         tool_use_id: m.tool_use_id ?? m.tool_call_id ?? '',
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
         ...(m.is_error ? { is_error: true } : {}),
-      };
-
-      const last = result[result.length - 1];
-      if (last?.role === 'user' && Array.isArray(last.content)) {
-        (last.content as Anthropic.ToolResultBlockParam[]).push(block);
-      } else {
-        result.push({ role: 'user', content: [block] });
-      }
+      }]);
     } else {
-      // user messages
-      result.push({
-        role: 'user',
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-      });
+      pushUser([{ type: 'text', text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }]);
     }
   }
 

@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
-import { FIXTURE_MCP_CONFIG, runMuxcode, startFakeModel } from './helpers.mjs';
+import { FIXTURE_MCP_CONFIG, runMuxcode, startFakeAnthropic, startFakeModel } from './helpers.mjs';
 
 const ARGS = ['run', '-p', '--dangerously-skip-permissions'];
 let root;
@@ -126,6 +126,36 @@ test('a tool call left without its result by a crash is dropped on resume', asyn
     assert.equal(model.requests[0].messages.at(-1).content, 'retry');
   } finally {
     await model.close();
+  }
+});
+
+test('resuming a run interrupted before the model answered sends valid Anthropic history', async () => {
+  // Interrupted mid-request: the session ends with the user's prompt and no reply.
+  const api = await startFakeAnthropic(() => ({ text: 'ok' }));
+  try {
+    const id = 'mux-interrupted1';
+    mkdirSync(path.join(configDir, 'sessions'), { recursive: true });
+    const lines = [
+      { type: 'meta', id, cwd: work, created_at: new Date().toISOString() },
+      { type: 'message', message: { role: 'user', content: 'first' } },
+      { type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'reply' }] } },
+      { type: 'message', message: { role: 'user', content: 'interrupted prompt' } },
+    ];
+    writeFileSync(path.join(configDir, 'sessions', `${id}.jsonl`), lines.map(l => JSON.stringify(l)).join('\n') + '\n');
+    const r = await runMuxcode([...ARGS, '--resume', id], {
+      stdin: 'try again',
+      env: { ...env(), ANTHROPIC_API_KEY: 'test-key', ANTHROPIC_BASE_URL: api.url },
+      cwd: work,
+    });
+    assert.equal(r.code, 0, r.stderr);
+    const msgs = api.requests[0].messages;
+    for (let i = 1; i < msgs.length; i++) assert.notEqual(msgs[i].role, msgs[i - 1].role, `turns ${i - 1} and ${i} share a role`);
+    assert.deepEqual(msgs.at(-1).content, [
+      { type: 'text', text: 'interrupted prompt' },
+      { type: 'text', text: 'try again' },
+    ]);
+  } finally {
+    await api.close();
   }
 });
 
