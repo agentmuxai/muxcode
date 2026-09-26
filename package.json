@@ -1,6 +1,6 @@
 {
   "name": "@agentmuxai/muxcode",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "First-party agentic loop CLI for AgentMux — local GGUF inference via llama-server, cloud APIs, full MCP tool execution",
   "type": "module",
   "bin": {
@@ -12,6 +12,7 @@
     "catalog.json"
   ],
   "scripts": {
+    "prepare": "node -e \"try{const cp=require('child_process'),path=require('path'),fs=require('fs');const t=path.resolve(cp.execSync('git rev-parse --show-toplevel',{stdio:['ignore','pipe','ignore']}).toString().trim());if(t!==path.resolve(process.cwd())||!fs.existsSync(path.join(t,'.githooks')))process.exit(0)}catch(e){process.exit(0)}require('child_process').execSync('git config core.hooksPath .githooks',{stdio:'ignore'})\"",
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node bin/muxcode.js",
