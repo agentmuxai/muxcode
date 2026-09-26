@@ -12,6 +12,8 @@ export interface LoopSettings {
   systemPrompt?: string;
   /** Appended to the system prompt (built-in or replaced). */
   appendSystemPrompt?: string;
+  /** Instruction files (CLAUDE.md, AGENTS.md), sent as a user message before the prompt. */
+  instructions?: string;
   maxTurns: number;
   effort?: CompleteOptions['effort'];
   /** Earlier messages of a resumed session (no system prompt). */
@@ -41,7 +43,15 @@ export async function runLoop(
 ): Promise<LoopOutcome> {
   let system = settings.systemPrompt ?? SYSTEM_PROMPT;
   if (settings.appendSystemPrompt) system += `\n\n${settings.appendSystemPrompt}`;
-  const messages: Message[] = [{ role: 'system', content: system }, ...(settings.history ?? [])];
+  // Instructions (CLAUDE.md, AGENTS.md) go in their own user message, not the
+  // system prompt, so the system prompt stays byte-stable for prompt caching
+  // (as Claude Code does). They come first, before a resumed conversation, and
+  // are reloaded every run rather than saved in the session (the files change).
+  const messages: Message[] = [
+    { role: 'system', content: system },
+    ...(settings.instructions ? [{ role: 'user' as const, content: settings.instructions }] : []),
+    ...(settings.history ?? []),
+  ];
   const push = (m: Message) => {
     messages.push(m);
     settings.session?.append(m);

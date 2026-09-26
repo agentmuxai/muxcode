@@ -5,6 +5,7 @@ import { StreamJsonEmitter } from './emit/stream-json.js';
 import { withBuiltinTools } from './tools/index.js';
 import { runLoop } from './loop.js';
 import { isValidSessionId, latestSessionFor, loadSession, SessionWriter } from './session.js';
+import { instructionsDisabled, loadInstructions } from './instructions.js';
 import { getCatalog, findModel } from './models/catalog.js';
 import { downloadModel } from './models/download.js';
 import { listInstalled } from './models/list.js';
@@ -125,6 +126,7 @@ export function buildCli(): Command {
           const outcome = await runLoop(prompt, backend, tools, emitter, {
             systemPrompt: opts.system,
             appendSystemPrompt: opts.appendSystemPrompt,
+            instructions: instructionsDisabled() ? undefined : loadInstructions(),
             maxTurns: opts.maxTurns,
             effort: opts.effort,
             history: history ?? [],
