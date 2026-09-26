@@ -61,6 +61,10 @@ node bin/muxcode.js --help
 Releases: bump `version` in `package.json`, merge, then push a matching tag (`v0.2.0`). The
 [publish workflow](.github/workflows/publish.yml) builds and publishes to npm.
 
+## Design docs
+
+Specs and the roadmap live in [`docs/`](docs/README.md). Work is tracked as issues in this repo.
+
 ## License
 
 MIT
