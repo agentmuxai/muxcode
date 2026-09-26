@@ -1,5 +1,5 @@
 {
-  "name": "@a5af/muxcode",
+  "name": "@agentmuxai/muxcode",
   "version": "0.2.0",
   "description": "First-party agentic loop CLI for AgentMux — local GGUF inference via llama-server, cloud APIs, full MCP tool execution",
   "type": "module",
@@ -17,7 +17,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node bin/muxcode.js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest"
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.37.0",
@@ -33,11 +34,24 @@
     "node": ">=24.18.1"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/agentmuxai/muxcode.git"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "homepage": "https://github.com/agentmuxai/muxcode#readme",
+  "bugs": {
+    "url": "https://github.com/agentmuxai/muxcode/issues"
+  },
+  "keywords": [
+    "agentmux",
+    "agent",
+    "cli",
+    "llm",
+    "mcp",
+    "llama.cpp"
+  ]
 }
