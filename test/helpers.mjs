@@ -1,7 +1,7 @@
 // Test helpers: a fake OpenAI-compatible model server, and a way to run the
 // built CLI the way AgentMux does (argv plus a prompt on stdin).
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -142,13 +142,25 @@ export function streamEvents(frames) {
 
 /**
  * Run `bin/muxcode.js` in an empty temp dir with an isolated home (so no real
- * `.mcp.json` or config is picked up), pointed at `modelUrl`.
+ * `.mcp.json` or config is picked up), pointed at `modelUrl`. The temp dir is
+ * also the home dir. `files` maps paths (relative, `/`-separated, nested
+ * allowed) to contents; a path ending in `/` makes an empty directory (e.g.
+ * `'proj/.git/'`). `cwd` runs in a subdirectory of the temp dir instead.
  */
-export function runMuxcode(args, { stdin = '', modelUrl, env = {}, files = {}, cwd, onSpawn } = {}) {
+export function runMuxcode(args, { stdin = '', modelUrl, env = {}, files = {}, cwd, subdir = '.', onSpawn } = {}) {
+  // `cwd`: reuse this directory (not deleted). `subdir`: run in this subdirectory of it.
   const dir = cwd ?? mkdtempSync(path.join(os.tmpdir(), 'muxcode-test-'));
   for (const [name, content] of Object.entries(files)) {
-    writeFileSync(path.join(dir, name), typeof content === 'string' ? content : JSON.stringify(content));
+    const file = path.join(dir, ...name.split('/'));
+    if (name.endsWith('/')) {
+      mkdirSync(file, { recursive: true });
+      continue;
+    }
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, typeof content === 'string' ? content : JSON.stringify(content));
   }
+  const workDir = path.join(dir, ...subdir.split('/'));
+  mkdirSync(workDir, { recursive: true });
   const childEnv = { ...process.env };
   for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'MUX_MCP_CONFIG', 'MUXCODE_CONFIG_DIR']) {
     delete childEnv[k];
@@ -160,7 +172,7 @@ export function runMuxcode(args, { stdin = '', modelUrl, env = {}, files = {}, c
     ...env,
   });
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [BIN, ...args], { cwd: dir, env: childEnv });
+    const child = spawn(process.execPath, [BIN, ...args], { cwd: workDir, env: childEnv });
     onSpawn?.(child);
     let stdout = '';
     let stderr = '';

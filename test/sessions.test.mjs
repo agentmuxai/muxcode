@@ -201,3 +201,25 @@ test('an interrupt writes an Interrupted result, keeps the transcript, and exits
     await model.close();
   }
 });
+
+test('on resume, instructions come first and are not saved in the session', async () => {
+  const model = await startFakeModel((_b, n) => ({ content: `answer ${n}` }));
+  try {
+    const cwd = mkdtempSync(path.join(root, 'instr-'));
+    writeFileSync(path.join(cwd, 'CLAUDE.md'), 'Always be brief.');
+    const first = await runMuxcode(ARGS, { stdin: 'one', modelUrl: model.url, env: env(), cwd });
+    assert.equal(first.code, 0, first.stderr);
+    const id = sessionIdOf(first);
+    const second = await runMuxcode([...ARGS, '--resume', id], { stdin: 'two', modelUrl: model.url, env: env(), cwd });
+    assert.equal(second.code, 0, second.stderr);
+
+    const msgs = model.requests[1].messages;
+    assert.deepEqual(roles(msgs), ['system', 'user', 'user', 'assistant', 'user']);
+    assert.match(msgs[1].content, /Always be brief\./);
+    assert.equal(msgs[2].content, 'one');
+    const saved = readFileSync(path.join(configDir, 'sessions', `${id}.jsonl`), 'utf8');
+    assert.doesNotMatch(saved, /Always be brief/);
+  } finally {
+    await model.close();
+  }
+});

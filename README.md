@@ -67,6 +67,31 @@ Built-in tools use Claude Code's names and parameters, so AgentMux renders them 
 MCP tools from `.mcp.json` come after them; one with a built-in's name is ignored. With `--permission-mode plan`
 only read-only tools are offered (`Read`, `Grep`, `Glob`, `TodoWrite`, and MCP tools marked read-only).
 
+### Instruction files
+
+Mux Code reads `CLAUDE.md` by Claude Code's rules, plus `AGENTS.md`, and sends them to the model as the first
+user message (the system prompt stays unchanged, so it caches). Broadest first, all concatenated:
+
+1. `~/.claude/CLAUDE.md`, then `~/.claude/rules/**/*.md`.
+2. In each directory from the filesystem root down to the cwd, as Claude Code walks: `AGENTS.md`, `CLAUDE.md`,
+   `.claude/CLAUDE.md`, `CLAUDE.local.md`. So an AgentMux agent in `~/.agentmux/agents/<agent>/` also gets
+   `~/.agentmux/agents/CLAUDE.md`.
+3. Rules come from the project only: `.claude/rules/**/*.md` in the nearest directory holding `.git`, or in the
+   cwd if there is none, right after that directory's own files.
+
+- `AGENTS.md` is read alongside `CLAUDE.md` (Claude Code reads it only when there is no `CLAUDE.md`).
+- `@path` imports (relative to the importing file, absolute, or `~/...`) are replaced by that file's content,
+  up to 4 levels deep. Left as written: imports in code spans or fences, of missing files, and of a file already
+  included. An import from a directory's file must resolve inside that directory's tree or the project's (the
+  git root, else the cwd); Claude Code asks before following other imports, and a one-shot run has no one to ask.
+  Files in `~/.claude` may import from anywhere.
+- Block HTML comments (`<!-- ... -->`) are removed, except in code fences.
+- Rules whose frontmatter has `paths:` are skipped: Claude Code loads them only when a matching file is read.
+- The total is capped at 32 KiB. The most specific files are kept: the first file that doesn't fit keeps its
+  head, with a marker, and broader files are omitted and named.
+
+Set `MUXCODE_DISABLE_INSTRUCTIONS=1` to send none.
+
 ## Develop
 
 ```sh

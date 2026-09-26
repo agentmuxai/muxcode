@@ -1,11 +1,23 @@
 version: 2
 updates:
+  # Minor and patch updates arrive as one grouped PR a week. Major versions
+  # need code changes and are taken deliberately (#47), so Dependabot doesn't
+  # open PRs for them.
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
