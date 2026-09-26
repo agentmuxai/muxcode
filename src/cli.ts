@@ -89,12 +89,15 @@ export function buildCli(): Command {
         }
 
         try {
-          await runLoop(prompt, backend, tools, emitter, {
+          const outcome = await runLoop(prompt, backend, tools, emitter, {
             systemPrompt: opts.system,
             appendSystemPrompt: opts.appendSystemPrompt,
             maxTurns: opts.maxTurns,
             effort: opts.effort,
           });
+          // A run that didn't finish (e.g. --max-turns) is a failure too, for
+          // callers that check the exit code rather than the result frame.
+          if (outcome.subtype !== 'success') process.exitCode = 1;
         } catch {
           // runLoop already emitted the error event with accumulated token counts
           process.exitCode = 1;

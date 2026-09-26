@@ -1,6 +1,6 @@
 import type { CompleteOptions, IBackend, McpTool, Message, ToolCall } from './types.js';
 import { executeTool } from './mcp/client.js';
-import type { RunTotals, StreamJsonEmitter } from './emit/stream-json.js';
+import type { ResultSubtype, RunTotals, StreamJsonEmitter } from './emit/stream-json.js';
 import { costUsd } from './pricing.js';
 
 const SYSTEM_PROMPT = `You are Mux Code, an agentic coding assistant. You have access to tools that let you read and modify files, run commands, and interact with external services. Be concise and complete tasks efficiently. When you are done with a task, summarize what you did.`;
@@ -17,13 +17,19 @@ export interface LoopSettings {
 /** Thrown when a run fails; the error result frame has already been written. */
 export class LoopError extends Error {}
 
+/** How a run ended; the result frame has already been written. */
+export interface LoopOutcome {
+  text: string;
+  subtype: ResultSubtype;
+}
+
 export async function runLoop(
   prompt: string,
   backend: IBackend,
   tools: McpTool[],
   emitter: StreamJsonEmitter,
   settings: LoopSettings,
-): Promise<string> {
+): Promise<LoopOutcome> {
   let system = settings.systemPrompt ?? SYSTEM_PROMPT;
   if (settings.appendSystemPrompt) system += `\n\n${settings.appendSystemPrompt}`;
   const messages: Message[] = [
@@ -59,7 +65,7 @@ export async function runLoop(
 
       if (response.toolCalls.length === 0) {
         emitter.done(finalText, totals, 'success', response.stopReason);
-        return finalText;
+        return { text: finalText, subtype: 'success' };
       }
 
       // The assistant message as the model sent it (text, thinking, tool_use),
@@ -82,7 +88,7 @@ export async function runLoop(
     const maxTurnsNote = `[Stopped after ${settings.maxTurns} turns without completing the task]`;
     const resultText = finalText ? `${finalText}\n\n${maxTurnsNote}` : maxTurnsNote;
     emitter.done(resultText, totals, 'error_max_turns', null);
-    return resultText;
+    return { text: resultText, subtype: 'error_max_turns' };
   } catch (err) {
     const status = (err as { status?: unknown }).status;
     emitter.error((err as Error).message, totals, typeof status === 'number' ? status : undefined);
