@@ -22,7 +22,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.37.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "commander": "^12.0.0",
+    "commander": "^15.0.0",
     "openai": "^4.68.0"
   },
   "devDependencies": {
