@@ -75,7 +75,9 @@ export function resolveRunOptions(
 ): RunOptions & { promptWords: string } {
   const kept: string[] = [];
   for (const w of words) {
-    if (w.startsWith('-') && w.length > 1) {
+    // Only flag-shaped words (`--name`, `-x`) are options; `-1`, `-` and
+    // `-.5` are prompt text.
+    if (/^--?[A-Za-z]/.test(w)) {
       warn(`ignoring unknown option ${w}`);
     } else {
       kept.push(w);

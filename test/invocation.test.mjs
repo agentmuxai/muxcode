@@ -3,7 +3,7 @@
 // (agentmux-srv/src/backend/blockcontroller/subprocess/host_spawn.rs, argv.rs).
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { lastUserText, runMuxcode, startFakeModel } from './helpers.mjs';
+import { FIXTURE_MCP_CONFIG, lastUserText, runMuxcode, startFakeModel } from './helpers.mjs';
 
 let model;
 before(async () => { model = await startFakeModel(); });
@@ -56,6 +56,38 @@ test('an unknown flag is dropped with a warning, not sent as the prompt', async 
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stderr, /ignoring unknown option --some-future-flag/);
   assert.equal(lastUserText(model.requests[before]), 'real prompt');
+});
+
+test('prompt words that only look like options are kept', async () => {
+  const before = model.requests.length;
+  const r = await runMuxcode(['run', '-p', 'explain', '-1', 'and', '-', 'flag'], { modelUrl: model.url });
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(lastUserText(model.requests[before]), 'explain -1 and - flag');
+  assert.doesNotMatch(r.stderr, /ignoring unknown option/);
+});
+
+test('plan mode offers only the tools an MCP server marks read-only', async () => {
+  const before = model.requests.length;
+  const r = await runMuxcode(['run', '-p', '--permission-mode', 'plan'], {
+    stdin: 'look around',
+    modelUrl: model.url,
+    files: { '.mcp.json': FIXTURE_MCP_CONFIG },
+  });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(r.frames[0].tools, ['read_thing']);
+  assert.deepEqual(model.requests[before].tools.map(t => t.function.name), ['read_thing']);
+});
+
+test('other modes offer every MCP tool', async () => {
+  const before = model.requests.length;
+  const r = await runMuxcode(['run', '-p', '--dangerously-skip-permissions'], {
+    stdin: 'do it',
+    modelUrl: model.url,
+    files: { '.mcp.json': FIXTURE_MCP_CONFIG },
+  });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(r.frames[0].tools.sort(), ['read_thing', 'write_thing']);
+  assert.equal(model.requests[before].tools.length, 2);
 });
 
 test('an invalid permission mode fails before calling the model', async () => {

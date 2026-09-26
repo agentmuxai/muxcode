@@ -1,7 +1,7 @@
 // Test helpers: a fake OpenAI-compatible model server, and a way to run the
 // built CLI the way AgentMux does (argv plus a prompt on stdin).
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -48,8 +48,11 @@ export async function startFakeModel(reply = () => ({ content: 'done' })) {
  * Run `bin/muxcode.js` in an empty temp dir with an isolated home (so no real
  * `.mcp.json` or config is picked up), pointed at `modelUrl`.
  */
-export function runMuxcode(args, { stdin = '', modelUrl, env = {} } = {}) {
+export function runMuxcode(args, { stdin = '', modelUrl, env = {}, files = {} } = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'muxcode-test-'));
+  for (const [name, content] of Object.entries(files)) {
+    writeFileSync(path.join(dir, name), typeof content === 'string' ? content : JSON.stringify(content));
+  }
   const childEnv = { ...process.env };
   for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'MUX_MCP_CONFIG', 'MUXCODE_CONFIG_DIR']) {
     delete childEnv[k];
@@ -78,6 +81,13 @@ export function runMuxcode(args, { stdin = '', modelUrl, env = {} } = {}) {
     child.stdin.end(stdin);
   });
 }
+
+/** A `.mcp.json` that starts the fixture MCP server (one read-only tool, one not). */
+export const FIXTURE_MCP_CONFIG = {
+  mcpServers: {
+    fixture: { command: process.execPath, args: [path.join(ROOT, 'test', 'fixtures', 'mcp-server.mjs')] },
+  },
+};
 
 /** The text of the last user message the model received. */
 export function lastUserText(request) {
