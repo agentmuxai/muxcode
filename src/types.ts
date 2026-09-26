@@ -45,6 +45,8 @@ export interface McpTool {
     required?: string[];
   };
   _serverId: string;
+  /** The server marked the tool read-only (MCP `annotations.readOnlyHint`). */
+  readOnly?: boolean;
 }
 
 export interface LoopOptions {

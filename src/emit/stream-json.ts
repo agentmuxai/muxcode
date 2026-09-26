@@ -1,23 +1,28 @@
 import { randomBytes } from 'crypto';
 import type { ToolCall } from '../types.js';
+import type { OutputFormat } from '../run-options.js';
 
 export class StreamJsonEmitter {
   readonly sessionId: string;
   private startMs: number;
+  private format: OutputFormat;
 
-  constructor(sessionId?: string) {
+  constructor(sessionId?: string, format: OutputFormat = 'stream-json') {
     this.sessionId = sessionId ?? `mux-${randomBytes(8).toString('hex')}`;
     this.startMs = Date.now();
+    this.format = format;
   }
 
-  init(model: string, mcpServers: string[], tools: string[] = []) {
+  init(model: string, mcpServers: string[], tools: string[] = [], permissionMode?: string) {
     this.emit({
       type: 'system',
       subtype: 'init',
       session_id: this.sessionId,
+      cwd: process.cwd(),
       tools,
       mcp_servers: mcpServers,
       model,
+      ...(permissionMode ? { permissionMode } : {}),
     });
   }
 
@@ -89,7 +94,25 @@ export class StreamJsonEmitter {
     });
   }
 
-  private emit(obj: object) {
-    process.stdout.write(JSON.stringify(obj) + '\n');
+  /**
+   * `stream-json` writes every event. `json` writes only the final result
+   * object; `text` writes only the final result text (errors go to stderr).
+   */
+  private emit(obj: { type: string; [key: string]: unknown }) {
+    // AgentMux reads the session id from any line (host_spawn.rs), so every
+    // frame carries it.
+    obj.session_id ??= this.sessionId;
+    if (this.format === 'stream-json') {
+      process.stdout.write(JSON.stringify(obj) + '\n');
+      return;
+    }
+    if (obj.type !== 'result') return;
+    if (this.format === 'json') {
+      process.stdout.write(JSON.stringify(obj) + '\n');
+    } else if (typeof obj.result === 'string') {
+      process.stdout.write(obj.result + '\n');
+    } else {
+      process.stderr.write(`Error: ${String(obj.error ?? 'unknown error')}\n`);
+    }
   }
 }

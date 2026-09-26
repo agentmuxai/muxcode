@@ -68,6 +68,7 @@ export async function initMcpServers(configPath?: string): Promise<McpTool[]> {
         description: t.description ?? '',
         inputSchema: t.inputSchema as McpTool['inputSchema'],
         _serverId: id,
+        readOnly: t.annotations?.readOnlyHint === true,
       }));
 
       activeServers.push({ id, client, tools: serverTools });

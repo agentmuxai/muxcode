@@ -1,13 +1,11 @@
 {
   "name": "@agentmuxai/muxcode",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "First-party agentic loop CLI for AgentMux — local GGUF inference via llama-server, cloud APIs, full MCP tool execution",
   "type": "module",
   "bin": {
     "muxcode": "./bin/muxcode.js"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "files": [
     "bin/",
     "dist/",
@@ -17,7 +15,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node bin/muxcode.js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test": "npm run build && node --test \"test/**/*.test.mjs\"",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

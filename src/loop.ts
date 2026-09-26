@@ -2,18 +2,28 @@ import type { IBackend, Message, McpTool, ToolCall, ContentPart } from './types.
 import { executeTool } from './mcp/client.js';
 import type { StreamJsonEmitter } from './emit/stream-json.js';
 
-const MAX_TURNS = 40;
 const SYSTEM_PROMPT = `You are Mux Code, an agentic coding assistant. You have access to tools that let you read and modify files, run commands, and interact with external services. Be concise and complete tasks efficiently. When you are done with a task, summarize what you did.`;
+
+export interface LoopSettings {
+  /** Replaces the built-in system prompt. */
+  systemPrompt?: string;
+  /** Appended to the system prompt (built-in or replaced). */
+  appendSystemPrompt?: string;
+  maxTurns: number;
+}
 
 export async function runLoop(
   prompt: string,
   backend: IBackend,
   tools: McpTool[],
   emitter: StreamJsonEmitter,
-  systemOverride?: string,
+  settings: LoopSettings,
 ): Promise<string> {
+  const MAX_TURNS = settings.maxTurns;
+  let system = settings.systemPrompt ?? SYSTEM_PROMPT;
+  if (settings.appendSystemPrompt) system += `\n\n${settings.appendSystemPrompt}`;
   const messages: Message[] = [
-    { role: 'system', content: systemOverride ?? SYSTEM_PROMPT },
+    { role: 'system', content: system },
     { role: 'user', content: prompt },
   ];
 
