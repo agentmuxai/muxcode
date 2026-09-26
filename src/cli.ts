@@ -3,6 +3,7 @@ import { createBackend } from './backends/index.js';
 import { initMcpServers, closeMcpServers, getActiveServerIds } from './mcp/client.js';
 import { StreamJsonEmitter } from './emit/stream-json.js';
 import { runLoop } from './loop.js';
+import { isValidSessionId, latestSessionFor, loadSession, SessionWriter } from './session.js';
 import { getCatalog, findModel } from './models/catalog.js';
 import { downloadModel } from './models/download.js';
 import { listInstalled } from './models/list.js';
@@ -19,6 +20,10 @@ import {
   type RawRunOptions,
 } from './run-options.js';
 import path from 'path';
+
+/** Exit codes: 0 success, 1 error, 3 stopped at --max-turns, 130 interrupted. */
+const EXIT_MAX_TURNS = 3;
+const EXIT_INTERRUPTED = 130;
 
 export function buildCli(): Command {
   program
@@ -40,6 +45,7 @@ export function buildCli(): Command {
     .option('--system <text>', 'Replace the system prompt')
     .option('--append-system-prompt <text>', 'Append to the system prompt')
     .option('--resume <session-id>', 'Resume a previous session by ID')
+    .option('-c, --continue', 'Resume the most recent session started in this directory')
     .option('--permission-mode <mode>', `Permission mode: ${PERMISSION_MODES.join(' | ')}`)
     .option('--dangerously-skip-permissions', 'Run every tool call without asking (same as --permission-mode bypassPermissions)')
     .option('--effort <level>', `Reasoning effort: ${EFFORT_LEVELS.join(' | ')}`)
@@ -62,7 +68,33 @@ export function buildCli(): Command {
         process.exit(1);
       }
 
-      const emitter = new StreamJsonEmitter(opts.resume, opts.outputFormat);
+      // The session: --resume <id>, --continue (latest here), or a new one.
+      let sessionId = opts.resume;
+      if (sessionId && !isValidSessionId(sessionId)) {
+        process.stderr.write(`Error: invalid session id "${sessionId}"
+`);
+        process.exit(1);
+      }
+      if (!sessionId && opts.continueLatest) sessionId = latestSessionFor(process.cwd()) ?? undefined;
+      const emitter = new StreamJsonEmitter(sessionId, opts.outputFormat);
+      let history = sessionId ? loadSession(sessionId) : null;
+      if (sessionId && !history) {
+        process.stderr.write(`muxcode: no saved session ${sessionId}; starting it fresh
+`);
+      }
+      const session = new SessionWriter(emitter.sessionId, process.cwd());
+
+      // Ctrl+C / SIGTERM (AgentMux's interrupt): stop the step in progress, write
+      // the result, exit 130. A second signal, or a stuck shutdown, exits at once.
+      const abort = new AbortController();
+      let signals = 0;
+      const onSignal = () => {
+        if (++signals > 1) process.exit(EXIT_INTERRUPTED);
+        abort.abort();
+        setTimeout(() => process.exit(EXIT_INTERRUPTED), 3000).unref();
+      };
+      process.on('SIGINT', onSignal);
+      process.on('SIGTERM', onSignal);
 
       try {
         let tools;
@@ -94,10 +126,15 @@ export function buildCli(): Command {
             appendSystemPrompt: opts.appendSystemPrompt,
             maxTurns: opts.maxTurns,
             effort: opts.effort,
+            history: history ?? [],
+            session,
+            signal: abort.signal,
           });
-          // A run that didn't finish (e.g. --max-turns) is a failure too, for
-          // callers that check the exit code rather than the result frame.
-          if (outcome.subtype !== 'success') process.exitCode = 1;
+          // A run that didn't finish is a failure too, for callers that check
+          // the exit code rather than the result frame.
+          if (outcome.interrupted) process.exitCode = EXIT_INTERRUPTED;
+          else if (outcome.subtype === 'error_max_turns') process.exitCode = EXIT_MAX_TURNS;
+          else if (outcome.subtype !== 'success') process.exitCode = 1;
         } catch {
           // runLoop already emitted the error event with accumulated token counts
           process.exitCode = 1;

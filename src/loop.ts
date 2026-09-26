@@ -2,6 +2,7 @@ import type { CompleteOptions, IBackend, McpTool, Message, ToolCall } from './ty
 import { executeTool } from './mcp/client.js';
 import type { ResultSubtype, RunTotals, StreamJsonEmitter } from './emit/stream-json.js';
 import { costUsd } from './pricing.js';
+import type { SessionWriter } from './session.js';
 
 const SYSTEM_PROMPT = `You are Mux Code, an agentic coding assistant. You have access to tools that let you read and modify files, run commands, and interact with external services. Be concise and complete tasks efficiently. When you are done with a task, summarize what you did.`;
 
@@ -12,6 +13,12 @@ export interface LoopSettings {
   appendSystemPrompt?: string;
   maxTurns: number;
   effort?: CompleteOptions['effort'];
+  /** Earlier messages of a resumed session (no system prompt). */
+  history?: Message[];
+  /** Where each new message is recorded as it happens. */
+  session?: SessionWriter;
+  /** Aborts the run (Ctrl+C / SIGTERM from AgentMux's interrupt). */
+  signal?: AbortSignal;
 }
 
 /** Thrown when a run fails; the error result frame has already been written. */
@@ -21,6 +28,7 @@ export class LoopError extends Error {}
 export interface LoopOutcome {
   text: string;
   subtype: ResultSubtype;
+  interrupted?: boolean;
 }
 
 export async function runLoop(
@@ -32,10 +40,12 @@ export async function runLoop(
 ): Promise<LoopOutcome> {
   let system = settings.systemPrompt ?? SYSTEM_PROMPT;
   if (settings.appendSystemPrompt) system += `\n\n${settings.appendSystemPrompt}`;
-  const messages: Message[] = [
-    { role: 'system', content: system },
-    { role: 'user', content: prompt },
-  ];
+  const messages: Message[] = [{ role: 'system', content: system }, ...(settings.history ?? [])];
+  const push = (m: Message) => {
+    messages.push(m);
+    settings.session?.append(m);
+  };
+  push({ role: 'user', content: prompt });
 
   let finalText = '';
   const totals: RunTotals = {
@@ -47,7 +57,11 @@ export async function runLoop(
 
   try {
     for (let turn = 0; turn < settings.maxTurns; turn++) {
-      const response = await backend.complete(messages, tools, emitter, { effort: settings.effort });
+      settings.signal?.throwIfAborted();
+      const response = await backend.complete(messages, tools, emitter, {
+        effort: settings.effort,
+        signal: settings.signal,
+      });
 
       totals.numTurns++;
       totals.durationApiMs += response.durationMs;
@@ -63,25 +77,26 @@ export async function runLoop(
       // overwrite finalText with empty string each tool-only turn.
       finalText = response.text || finalText;
 
+      // The assistant message as the model sent it (text, thinking, tool_use),
+      // plus tool_calls for OpenAI-style backends.
+      push({
+        role: 'assistant',
+        content: response.content,
+        ...(response.toolCalls.length ? { tool_calls: response.toolCalls } : {}),
+      });
+
       if (response.toolCalls.length === 0) {
         emitter.done(finalText, totals, 'success', response.stopReason);
         return { text: finalText, subtype: 'success' };
       }
 
-      // The assistant message as the model sent it (text, thinking, tool_use),
-      // plus tool_calls for OpenAI-style backends.
-      messages.push({
-        role: 'assistant',
-        content: response.content,
-        tool_calls: response.toolCalls,
-      });
-
       // Execute tool calls sequentially — MCP Client is not concurrency-safe
       for (const call of response.toolCalls) {
+        settings.signal?.throwIfAborted();
         const output = await executeTool(call, tools);
         const isError = isErrorOutput(output);
         emitter.toolResult(call.id, output, isError);
-        messages.push(toolMessage(call, output, isError));
+        push(toolMessage(call, output, isError));
       }
     }
 
@@ -90,6 +105,10 @@ export async function runLoop(
     emitter.done(resultText, totals, 'error_max_turns', null);
     return { text: resultText, subtype: 'error_max_turns' };
   } catch (err) {
+    if (settings.signal?.aborted) {
+      emitter.error('Interrupted', totals);
+      return { text: 'Interrupted', subtype: 'error_during_execution', interrupted: true };
+    }
     const status = (err as { status?: unknown }).status;
     emitter.error((err as Error).message, totals, typeof status === 'number' ? status : undefined);
     throw new LoopError((err as Error).message);

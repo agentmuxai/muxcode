@@ -48,7 +48,7 @@ export class AnthropicBackend implements IBackend {
           input_schema: t.inputSchema,
         })),
       } : {}),
-    });
+    }, { signal: opts.signal });
 
     // Anthropic's stream events are already the shape AgentMux renders.
     for await (const ev of stream) {

@@ -76,6 +76,8 @@ export interface StreamSink {
 
 export interface CompleteOptions {
   effort?: 'low' | 'medium' | 'high' | 'max';
+  /** Cancels the request (the run was interrupted). */
+  signal?: AbortSignal;
 }
 
 export interface IBackend {
