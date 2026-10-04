@@ -10,9 +10,8 @@ internal reference repos.
 
 ## 0. Summary
 
-- **Notifications already work.** The existing org-level notification pipeline delivers muxcode events to Discord
-  and to muxbus (agents get ReAgent review notifications). No webhook needs adding; a repo-level one would
-  double-deliver.
+- **Notifications already work.** Agents already get ReAgent's review notifications for muxcode. No webhook
+  needs adding.
 - **ReAgent reviews muxcode**, but three of its checks fail on every PR because the default branch isn't `main`.
 - **muxcode has no branch protection**, no required checks and no review requirement; agentmux requires the
   `check` and `CI required` checks and one approval, and dismisses stale approvals.
@@ -25,7 +24,7 @@ internal reference repos.
 Read-only. `gh-agent` (the agent's GitHub App) returned *Resource not accessible by integration* for branch
 protection, webhooks, Actions permissions and secrets on every repo, and for org rulesets and hooks. What was
 readable: `GET repos/<r>` (settings), `GET repos/<r>/branches/<b>` (protected, required checks, enforcement),
-rulesets, workflow files, PR histories, and the notification pipeline's logs. Review
+rulesets, workflow files and PR histories. Review
 requirements are **inferred** from PR behaviour and marked as such.
 
 ## 2. Comparison
@@ -112,13 +111,8 @@ Do these in order; 3 depends on 1 and on the PR in §3 having run once.
 - **ReAgent config** — add muxcode to ReAgent's repo configuration (kept in a private repo), mirroring agentmux's
   entry (Codex and comment-reply enabled; merge-regression analysis once `main` exists). muxcode runs on ReAgent's
   defaults today.
-- **Notifications (no change needed):** the existing org-level webhook already routes agentmuxai events to Discord
-  and muxbus, and its logs show muxcode `pull_request`, `pull_request_review` and `issues` events delivered,
-  including the review on muxcode#3. Repo-level hooks were removed earlier because they caused double
-  notifications — **don't add one back.**
-- **Org-wide gap (not muxcode-specific):** the org hook delivers no `push`, `workflow_run` or `release` events for
-  any agentmuxai repo (none in three days of logs), so Discord's CI-failed, push and release messages never
-  fire for agentmuxai.
+- **Notifications (no change needed):** muxcode's PR and review events already reach agents through the
+  organisation's existing notification setup. Don't add a repo-level webhook.
 - **Release policy:** muxcode has no changesets, so ReAgent asks for a `package.json` bump on every code PR (as on
   #35). That's being followed; adopting `.changesets/` like agentmux would move bumps into release PRs.
 
