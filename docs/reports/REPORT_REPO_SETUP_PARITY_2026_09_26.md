@@ -125,5 +125,3 @@ Do these in order; 3 depends on 1 and on the PR in §3 having run once.
 ## 6. Side findings in the reference repos
 
 - agentmux's `codex-review-gate.yml` says `Codex review` should be a required check; it isn't.
-- Some of the internal reference repos don't make the `check / check` co-author workflow a required check; tracked
-  privately.
