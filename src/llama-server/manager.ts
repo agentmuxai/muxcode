@@ -36,8 +36,7 @@ export async function getServerUrl(
 
   const binPath = await ensureLlamaServer(onProgress);
   const port = await findFreePort(8080);
-  const meta = readModelMeta(modelPath);
-  const ctxSize = meta?.context_window ?? 4096;
+  const ctxSize = contextSizeFor(modelPath);
 
   const proc = spawn(binPath, [
     '--model', modelPath,
@@ -137,6 +136,15 @@ function isPortFree(port: number): Promise<boolean> {
     });
     server.on('error', () => resolve(false));
   });
+}
+
+/**
+ * The context size llama-server runs `modelPath` with: the model's
+ * `context_window` from its sidecar metadata, else 4096. The effective window
+ * of a local model, so it is also what `run` reports as the window.
+ */
+export function contextSizeFor(modelPath: string): number {
+  return readModelMeta(modelPath)?.context_window ?? 4096;
 }
 
 function readModelMeta(modelPath: string): { context_window?: number } | null {

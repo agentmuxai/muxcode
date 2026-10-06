@@ -83,6 +83,13 @@ export interface CompleteOptions {
 export interface IBackend {
   /** The model requested (backends report the model that answered on each response). */
   readonly model: string;
+  /**
+   * The context window the model runs with, when the backend knows it (a local
+   * model: the size llama-server is started with). Reported in the result's
+   * `modelUsage`, where AgentMux's context meter reads it. Absent for remote
+   * backends, whose window muxcode doesn't know.
+   */
+  readonly contextWindow?: number;
   complete(messages: Message[], tools: McpTool[], sink: StreamSink, opts?: CompleteOptions): Promise<CompletionResponse>;
 }
 

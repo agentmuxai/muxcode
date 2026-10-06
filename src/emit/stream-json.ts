@@ -35,6 +35,11 @@ export class StreamJsonEmitter implements StreamSink {
   readonly sessionId: string;
   private startMs: number;
   private format: OutputFormat;
+  // The model's context window, when the backend knows it, and every model id
+  // it has been reported under: the backend's own name and whatever
+  // message_start carried (a server may answer under another id).
+  private contextWindow?: number;
+  private windowModels = new Set<string>();
 
   constructor(sessionId?: string, format: OutputFormat = 'stream-json') {
     this.sessionId = sessionId ?? `mux-${randomBytes(8).toString('hex')}`;
@@ -66,7 +71,14 @@ export class StreamJsonEmitter implements StreamSink {
 
   // ── StreamSink: the model's response as it streams ─────────────────────
 
+  /** The context window `model` runs with; reported in the result's `modelUsage`. */
+  setContextWindow(model: string, contextWindow: number) {
+    this.contextWindow = contextWindow;
+    this.windowModels.add(model);
+  }
+
   messageStart(id: string, model: string, usage: Usage) {
+    if (this.contextWindow != null && model) this.windowModels.add(model);
     this.streamEvent({
       type: 'message_start',
       message: { id, type: 'message', role: 'assistant', model, content: [], stop_reason: null, usage: wireUsage(usage) },
@@ -167,6 +179,11 @@ export class StreamJsonEmitter implements StreamSink {
       total_cost_usd: t.costUsd,
       cost_usd: t.costUsd,
       usage: wireUsage(t.usage),
+      // Claude Code's per-model report; AgentMux's context meter takes the
+      // window from `modelUsage[<message.model>].contextWindow`.
+      ...(this.contextWindow != null
+        ? { modelUsage: Object.fromEntries([...this.windowModels].map(m => [m, { contextWindow: this.contextWindow }])) }
+        : {}),
     });
   }
 
