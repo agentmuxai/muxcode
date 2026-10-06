@@ -1,6 +1,6 @@
 {
   "name": "@agentmuxai/muxcode",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "First-party agentic loop CLI for AgentMux — local GGUF inference via llama-server, cloud APIs, full MCP tool execution",
   "type": "module",
   "bin": {
