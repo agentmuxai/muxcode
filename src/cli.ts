@@ -114,6 +114,7 @@ export function buildCli(): Command {
             baseUrl: opts.baseUrl,
             onProgress: (pct, label) => emitter.loading(`${label} (${pct}%)`),
           });
+          if (backend.contextWindow) emitter.setContextWindow(backend.model, backend.contextWindow);
         } catch (err) {
           // Ensure init always precedes the error event
           if (!initEmitted) emitter.init(opts.model ?? 'auto', [], [], opts.permissionMode);

@@ -1,6 +1,6 @@
 import path from 'path';
 import { existsSync } from 'fs';
-import { getServerUrl } from '../llama-server/manager.js';
+import { contextSizeFor, getServerUrl } from '../llama-server/manager.js';
 import { muxHome } from '../llama-server/acquire.js';
 import { listInstalled } from '../models/list.js';
 import type { CompleteOptions, CompletionResponse, IBackend, McpTool, Message, StreamSink } from '../types.js';
@@ -11,6 +11,7 @@ export class LocalBackend implements IBackend {
   private modelPath: string;
   private onProgress?: (pct: number, label: string) => void;
   readonly model: string;
+  readonly contextWindow: number;
 
   constructor(
     modelName: string,
@@ -18,6 +19,7 @@ export class LocalBackend implements IBackend {
   ) {
     this.modelPath = resolveModelPath(modelName);
     this.model = path.basename(this.modelPath, '.gguf');
+    this.contextWindow = contextSizeFor(this.modelPath);
     this.onProgress = onProgress;
   }
 
