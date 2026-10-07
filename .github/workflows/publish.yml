@@ -3,8 +3,11 @@ name: Publish to npm
 # Publishes @agentmuxai/muxcode to the public npm registry when a version tag
 # (v0.2.0, ...) is pushed. The tag must match package.json's version.
 #
-# Needs a repository secret NPM_TOKEN: an npm automation (or granular publish)
-# token for the "agentmuxai" npm org. AgentMux installs the package with
+# Publishes through npm trusted publishing: the job's GitHub OIDC identity,
+# which npmjs.com accepts for this repo and this workflow file, so no npm token
+# is stored anywhere. Provenance is attached automatically. Needs npm 11.5.1+.
+# (A brand-new package can't be first-published this way, so the name was
+# reserved with a hand-published, code-free 0.0.0.) AgentMux installs the package with
 # `npm install -g @agentmuxai/muxcode@<pinned version>`, so every version it
 # pins must be published here first.
 
@@ -14,7 +17,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # npm provenance
+  id-token: write # trusted publishing (OIDC) and provenance
 
 jobs:
   publish:
@@ -37,6 +40,6 @@ jobs:
       - run: npm run build
       - name: Smoke test the CLI
         run: node bin/muxcode.js --version
-      - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install -g npm@11
+      - run: npm publish --access public
