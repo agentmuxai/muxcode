@@ -8,6 +8,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Don't propose a version younger than a week: a compromised release is usually found and
+    # pulled in the first days. Security updates are not delayed by this.
+    cooldown:
+      default-days: 7
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
@@ -18,6 +22,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ['*']
