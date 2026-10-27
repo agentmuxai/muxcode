@@ -1,6 +1,7 @@
 version: 2
 updates:
-  # Minor and patch updates arrive as one grouped PR a week. Major versions
+  # Patch updates arrive as one grouped PR a week. A minor update gets a PR of its own, so one
+  # that needs a closer look (a 0.x minor can break) doesn't hold back the rest. Major versions
   # need code changes and are taken deliberately (#47), so Dependabot doesn't
   # open PRs for them.
   - package-ecosystem: npm
@@ -13,8 +14,8 @@ updates:
     cooldown:
       default-days: 7
     groups:
-      npm-minor-and-patch:
-        update-types: [minor, patch]
+      npm-patch:
+        update-types: [patch]
     ignore:
       - dependency-name: '*'
         update-types: [version-update:semver-major]
